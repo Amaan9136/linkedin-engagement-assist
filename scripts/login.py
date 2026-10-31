@@ -9,9 +9,9 @@ def main():
     args = ['--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
     if sys.platform.startswith('linux'):
         args.append('--password-store=basic')
-    if _env_bool('BROWSER_NO_SANDBOX', False):
+    if _env_bool('BROWSER_NO_SANDBOX', False) and sys.platform.startswith('linux'):
         args.append('--no-sandbox')
-    kw = {'user_data_dir': str(profile), 'headless': False, 'args': args, 'viewport': {'width': 1280, 'height': 900}, 'ignore_default_args': ['--enable-automation']}
+    kw = {'user_data_dir': str(profile), 'headless': False, 'args': args, 'viewport': None, 'ignore_default_args': ['--enable-automation']}
     if _env('CHROMIUM_EXECUTABLE'):
         kw['executable_path'] = _env('CHROMIUM_EXECUTABLE')
     with sync_playwright() as pw:
@@ -19,7 +19,10 @@ def main():
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto('https://www.linkedin.com/login')
         input('Log in to LinkedIn in the opened window, then press Enter here to save the session... ')
-        ctx.close()
+        try:
+            ctx.close()
+        except Exception:
+            pass
     print('Session saved to', profile)
 if __name__ == '__main__':
     main()

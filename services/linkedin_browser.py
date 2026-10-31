@@ -44,13 +44,13 @@ class LinkedInBrowser:
             args = ['--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
             if sys.platform.startswith('linux'):
                 args.append('--password-store=basic')
-            if self.cfg.no_sandbox:
+            if self.cfg.no_sandbox and sys.platform.startswith('linux'):
                 args.append('--no-sandbox')
-            kw = {'user_data_dir': str(self.cfg.profile_dir), 'headless': self.cfg.headless, 'args': args, 'viewport': {'width': 1280, 'height': 900}, 'locale': 'en-US', 'ignore_default_args': ['--enable-automation']}
+            kw = {'user_data_dir': str(self.cfg.profile_dir), 'headless': self.cfg.headless, 'args': args, 'viewport': {'width': 1280, 'height': 900} if self.cfg.headless else None, 'locale': 'en-US', 'ignore_default_args': ['--enable-automation']}
             if self.cfg.chromium_exec:
                 kw['executable_path'] = self.cfg.chromium_exec
             self._ctx = self._pw.chromium.launch_persistent_context(**kw)
-            if self.cfg.block_media:
+            if self.cfg.block_media and self.cfg.headless:
                 self._ctx.route('**/*', self._route)
             self._ctx.set_default_timeout(20000)
             self._ctx.set_default_navigation_timeout(45000)
@@ -97,7 +97,7 @@ class LinkedInBrowser:
         self.start()
     def _get_page(self):
         pages = [p for p in self._ctx.pages if not p.is_closed()]
-        for extra in pages[1:]:
+        for extra in (pages[1:] if self.cfg.headless else []):
             try:
                 extra.close()
             except Exception:
@@ -110,6 +110,8 @@ class LinkedInBrowser:
         try:
             self._get_page().evaluate('1+1')
             return True
+        except PWError as e:
+            return not any((m in str(e).lower() for m in ('closed', 'disconnected', 'crashed')))
         except Exception:
             return False
     def pause(self, page, lo=700, hi=1600):
