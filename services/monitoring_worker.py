@@ -188,6 +188,7 @@ class MonitoringWorker:
             return False
     def _poll(self, s):
         initial = models.get_meta('initial_done') != '1'
+        log.info('Poll started')
         try:
             posts = post_collector.collect(self.browser, deep=initial, lookback_days=s['lookback_days'])
         except AuthRequired as e:

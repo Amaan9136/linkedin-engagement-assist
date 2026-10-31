@@ -24,6 +24,7 @@ SEL_LIKE = ["button[aria-label^='Reaction button state']", 'button.react-button_
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
+SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
 def _norm(s):
     return re.sub('\\s+', ' ', s or '').strip().lower()
@@ -219,21 +220,27 @@ class LinkedInBrowser:
                 tab.close()
     def _copy_link(self, page, card):
         try:
-            page.evaluate('window.__copied = null')
+            page.evaluate("window.__copied = null; document.querySelectorAll(\"[data-testid='toasts-title']\").forEach(h => { h.parentElement.style.display = 'none'; }); document.querySelectorAll(\"a[href*='lnkd%2Ein%2Fp%2F']\").forEach(a => { a.dataset.old = '1'; })")
             scope = page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first
-            copy = page.get_by_text(re.compile('copy link', re.I)).first
-            scope.locator("button[aria-label^='Open control menu for post by']").first.click(timeout=4000)
-            try:
-                copy.click(timeout=4000)
-            except PWTimeout:
-                page.keyboard.press('Escape')
-                scope.locator("[aria-label='Send']").first.click(timeout=4000)
-                copy.click(timeout=4000)
-            try:
-                page.wait_for_function('window.__copied', timeout=3000)
-            except PWTimeout:
-                pass
-            raw = page.evaluate("window.__copied || navigator.clipboard.readText().catch(() => '')") or ''
+            if not scope.locator(SEL_LINK_OPEN).count():
+                return None
+            for opener in SEL_LINK_OPEN.split(', '):
+                if not scope.locator(opener).count():
+                    continue
+                try:
+                    scope.locator(opener).first.click(timeout=3000)
+                    page.get_by_text(re.compile('copy link', re.I)).locator('visible=true').first.click(timeout=3000)
+                    break
+                except PWTimeout:
+                    page.keyboard.press('Escape')
+            else:
+                raise PWTimeout('Copy link not found')
+            for _ in range(15):
+                if page.evaluate("!!(window.__copied || document.querySelector(\"a[href*='lnkd%2Ein%2Fp%2F']:not([data-old])\"))"):
+                    break
+                page.wait_for_timeout(200)
+            raw = page.evaluate("window.__copied || decodeURIComponent((document.querySelector(\"a[href*='lnkd%2Ein%2Fp%2F']:not([data-old])\") || {href: ''}).href) || Promise.race([navigator.clipboard.readText().catch(() => ''), new Promise(r => setTimeout(() => r(''), 1500))])") or ''
+            raw = (re.search(r'https?://lnkd\.in/\S+?(?=&|$)', raw) or [raw])[0]
             urn = self._urn_of(raw) or self._resolve_short(raw)
             self._link_fail = 0 if urn else self._link_fail + 1
             if not urn:
@@ -241,10 +248,10 @@ class LinkedInBrowser:
             page.keyboard.press('Escape')
             self.pause(page, 600, 1200)
             return urn
-        except (PWError, PWTimeout):
+        except (PWError, PWTimeout) as e:
             self._link_fail += 1
             if self._link_fail == 1:
-                self.snapshot(page, 'menu_debug.html', 'Copy link menu not found')
+                self.snapshot(page, 'menu_debug.html', 'Copy link menu not found: ' + (str(e).splitlines() or [''])[0])
             page.keyboard.press('Escape')
             return None
     def resolve_links(self, page, items, limit=25):
@@ -263,6 +270,7 @@ class LinkedInBrowser:
                 if urn:
                     self._links[card] = urn
                     it['urn'] = urn
+                    log.info('Resolved post link %s', urn)
         return items
     def _find_card(self, page, url, post):
         m = re.search(r'[?&]card=([\w-]+)', url)

@@ -105,7 +105,7 @@ def to_posts(items, lookback_days):
     return posts
 def collect(browser, deep=False, lookback_days=7):
     page = browser.goto_feed()
-    max_scrolls = 30 if deep else 4
+    max_scrolls = 2 if deep else 4
     seen = {}
     stagnant = 0
     for _ in range(max_scrolls):
