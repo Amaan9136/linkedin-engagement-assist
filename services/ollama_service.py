@@ -21,7 +21,8 @@ def generate(prompt, system, s):
     if r.status_code in (401, 403):
         raise PermanentError("Ollama rejected the request (not signed in?). Run 'ollama signin'.")
     if r.status_code == 429 or r.status_code >= 500:
-        raise ServiceUnavailable(f'Ollama returned HTTP {r.status_code}')
+        ra = r.headers.get('Retry-After', '')
+        raise ServiceUnavailable(f'Ollama returned HTTP {r.status_code}', max(int(ra) if ra.isdigit() else 0, 60 if r.status_code == 429 else 0))
     if r.status_code != 200:
         raise PermanentError(f'Ollama returned HTTP {r.status_code}')
     try:

@@ -102,6 +102,14 @@ async function refreshStatus() {
       const msgs = [s.browser_error, s.auth_status !== 'ok' ? s.auth_message : '', s.ai_status !== 'up' ? s.ai_message : '', s.last_error].filter(Boolean);
       $('#st-msg').textContent = msgs.join(' · ');
     }
+    if (page === 'posts') {
+      const on = d.status.autoscroll_until && Date.parse(d.status.autoscroll_until) > Date.now();
+      $('#btn-autoscroll').textContent = on ? 'Stop auto scroll' : 'Auto scroll';
+      $('#btn-autoscroll').classList.toggle('btn-primary', !!on);
+      state.autoAi = !!d.config.auto_ai;
+      $('#btn-autoai').textContent = 'Auto AI drafts: ' + (state.autoAi ? 'On' : 'Off');
+      $('#btn-autoai').classList.toggle('btn-primary', state.autoAi);
+    }
   } catch (e) {
     const pill = $('#health-pill');
     pill.textContent = 'Offline';
@@ -226,6 +234,8 @@ function initPosts() {
   let t;
   $('#search').oninput = e => { clearTimeout(t); t = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadPosts(); }, 300); };
   $('#btn-refresh').onclick = loadPosts;
+  $('#btn-autoai').onclick = () => act(() => api('PUT', '/api/settings', {auto_ai: !state.autoAi})).then(refreshStatus);
+  $('#btn-autoscroll').onclick = () => act(() => api('POST', '/api/monitor/autoscroll')).then(refreshStatus);
   $('#prev').onclick = () => { state.page--; loadPosts(); };
   $('#next').onclick = () => { state.page++; loadPosts(); };
   $('#select-all').onchange = e => {

@@ -19,13 +19,14 @@ def enqueue_for_new_post(pid, p, s):
     if models.queue_size() >= s['max_queue']:
         log.warning('Queue full; post %s will be queued later', pid, extra={'post_id': pid})
         return
-    models.enqueue_job(pid, 'ai')
+    if s['auto_ai']:
+        models.enqueue_job(pid, 'ai')
     if like_eligible(p, s):
         models.update_post(pid, like_status='pending')
         models.enqueue_job(pid, 'like')
 def enqueue_orphans(s):
     ai_rows = db.query("SELECT id FROM posts WHERE skipped=0 AND ai_status='pending' AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND j.kind='ai') ORDER BY discovered_at DESC LIMIT 50")
-    for r in ai_rows:
+    for r in (ai_rows if s['auto_ai'] else []):
         if models.queue_size() >= s['max_queue']:
             return
         models.enqueue_job(r['id'], 'ai')
@@ -45,7 +46,7 @@ def run_like(job, post, browser, s):
     if wait > 0:
         raise Deferred(wait, 'like pacing')
     try:
-        result = browser.like_post(post['url'])
+        result = browser.like_post(post['url'], post)
     except ActionUncertain as e:
         models.update_post(pid, like_status='verification_required', last_error=str(e)[:500], verification_status='pending_verification')
         models.add_action(pid, 'like', 'uncertain', str(e))
@@ -64,7 +65,7 @@ def run_comment(job, post, browser, s):
     if len(text) > 1250:
         raise PermanentError("Comment exceeds LinkedIn's 1250 character limit")
     if post['comment_status'] == 'verification_required' or post['verification_status'] == 'pending_verification':
-        verdict = browser.verify_comment(post['url'], text)
+        verdict = browser.verify_comment(post['url'], text, post)
         if verdict is True:
             _mark_published(pid, text, 'verified after uncertain submission')
             return
@@ -77,7 +78,7 @@ def run_comment(job, post, browser, s):
         raise Deferred(wait, 'global comment cooldown')
     models.update_post(pid, comment_status='publishing', comment_attempts=post['comment_attempts'] + 1, comment_attempt_at=models.now_iso())
     try:
-        browser.post_comment(post['url'], text)
+        browser.post_comment(post['url'], text, post)
     except ActionUncertain as e:
         models.update_post(pid, comment_status='verification_required', verification_status='pending_verification', last_error=str(e)[:500])
         models.add_action(pid, 'comment', 'uncertain', str(e))

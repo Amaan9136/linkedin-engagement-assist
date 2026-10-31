@@ -3,7 +3,9 @@ class AppError(Exception):
 class TemporaryError(AppError):
     pass
 class ServiceUnavailable(TemporaryError):
-    pass
+    def __init__(self, msg='', retry_after=0):
+        super().__init__(msg)
+        self.retry_after = retry_after
 class BrowserUnavailable(TemporaryError):
     pass
 class PermanentError(AppError):

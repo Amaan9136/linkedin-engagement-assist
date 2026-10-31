@@ -26,4 +26,4 @@ def stats():
     worker = current_app.extensions['worker']
     snap = runtime.snapshot()
     snap['worker_alive'] = worker.alive()
-    return ok(stats=models.stats(), status=snap, config={'poll_interval': s['poll_interval'], 'publishing_mode': s['publishing_mode'], 'monitoring_enabled': s['monitoring_enabled'], 'timezone': s['timezone']})
+    return ok(stats=models.stats(), status=snap, config={'poll_interval': s['poll_interval'], 'publishing_mode': s['publishing_mode'], 'monitoring_enabled': s['monitoring_enabled'], 'auto_ai': s['auto_ai'], 'timezone': s['timezone']})

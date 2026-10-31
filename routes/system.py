@@ -27,6 +27,11 @@ def resume():
 def poll_now():
     current_app.extensions['worker'].poll_now()
     return ok(message='Poll scheduled')
+@bp.post('/api/monitor/autoscroll')
+@api
+def autoscroll():
+    on = current_app.extensions['worker'].toggle_autoscroll()
+    return ok(message='Auto scroll started for 3 minutes' if on else 'Auto scroll stopped', active=on)
 @bp.post('/api/browser/restart')
 @api
 def restart_browser():

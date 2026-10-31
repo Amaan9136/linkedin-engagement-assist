@@ -5,7 +5,7 @@ from . import ollama_service
 class Runtime:
     def __init__(self):
         self.lock = threading.Lock()
-        self.data = {'monitor_state': 'stopped', 'browser_status': 'stopped', 'auth_status': 'unknown', 'auth_message': '', 'ai_status': 'unknown', 'ai_message': '', 'last_poll_ok': None, 'next_poll_at': None, 'last_error': None, 'browser_error': None, 'worker_restarts': 0, 'started_at': models.now_iso()}
+        self.data = {'monitor_state': 'stopped', 'browser_status': 'stopped', 'auth_status': 'unknown', 'auth_message': '', 'ai_status': 'unknown', 'ai_message': '', 'last_poll_ok': None, 'autoscroll_until': None, 'next_poll_at': None, 'last_error': None, 'browser_error': None, 'worker_restarts': 0, 'started_at': models.now_iso()}
     def set(self, **kw):
         with self.lock:
             self.data.update(kw)

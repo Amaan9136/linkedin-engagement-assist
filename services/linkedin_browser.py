@@ -16,10 +16,10 @@ log = logging.getLogger('linkedin.browser')
 FEED_URL = 'https://www.linkedin.com/feed/'
 AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
-SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation']"
-SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article'], [data-view-name='feed-full-update']"
+SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation'], [data-testid='primary-nav']"
+SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article'], [data-view-name='feed-full-update'], [componentkey^='update-card']"
 SEL_ANY_LIKE = "button[aria-label*='like' i]"
-SEL_LIKE = ['button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']", SEL_ANY_LIKE]
+SEL_LIKE = ["button[aria-label^='Reaction button state']", 'button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']", SEL_ANY_LIKE]
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ['.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ['button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
@@ -32,6 +32,7 @@ class LinkedInBrowser:
         self._pw = None
         self._ctx = None
         self._page = None
+        self._card = None
     @property
     def started(self):
         return self._ctx is not None
@@ -166,15 +167,16 @@ class LinkedInBrowser:
     def scroll(self, page):
         page.mouse.wheel(0, random.randint(1800, 2600))
         page.wait_for_timeout(random.randint(1400, 2400))
-    @staticmethod
-    def _scope(page):
+    def _scope(self, page):
+        if self._card is not None:
+            return self._card
         loc = page.locator(SEL_UPDATE).first
         return loc if loc.count() else page.locator('main').first
-    def snapshot(self, page):
+    def snapshot(self, page, name='feed_debug.html', why='No posts found'):
         try:
-            path = self.cfg.log_dir / 'feed_debug.html'
+            path = self.cfg.log_dir / name
             path.write_text(page.content(), encoding='utf-8')
-            log.warning('No posts found on %s (title: %s); page saved to %s', page.url, page.title(), path)
+            log.warning('%s on %s (title: %s, cards: %d); page saved to %s', why, page.url, page.title(), page.locator("[componentkey^='update-card']").count(), path)
         except Exception as e:
             log.warning('Could not save feed snapshot: %s', e)
     def _first_visible(self, scope, selectors):
@@ -186,7 +188,39 @@ class LinkedInBrowser:
             except (PWError, PWTimeout):
                 continue
         return None
-    def _open_post(self, url):
+    def _find_card(self, page, url, post):
+        m = re.search(r'[?&]card=([\w-]+)', url)
+        snip = _norm(post['body'] if post else '')[:40]
+        cands = [page.locator(f"[componentkey^='update-card'][componentkey*='{m.group(1)}']")]
+        if len(snip) >= 15:
+            cands.append(page.locator("[componentkey^='update-card']").filter(has_text=snip))
+        return next((c.first for c in cands if c.count()), None)
+    def _open_post(self, url, post=None):
+        self._card = None
+        if '?card=' in url:
+            page = self._get_page()
+            for attempt in range(2):
+                if attempt or page.url.split('?')[0].rstrip('/') != FEED_URL.rstrip('/'):
+                    page = self.goto_feed()
+                else:
+                    page.mouse.wheel(0, -100000)
+                    page.wait_for_timeout(800)
+                card = self._find_card(page, url, post)
+                for _ in range(30):
+                    if card:
+                        break
+                    page.mouse.wheel(0, 700)
+                    page.wait_for_timeout(700)
+                    card = self._find_card(page, url, post)
+                if card:
+                    break
+            else:
+                self.snapshot(page, 'post_debug.html', 'Post not found')
+                raise TemporaryError('Post not found in the feed (it may have moved or been removed)')
+            card.scroll_into_view_if_needed()
+            self._card = card
+            self.pause(page)
+            return page
         page = self.goto(url)
         try:
             page.wait_for_selector(SEL_UPDATE + ', main ' + SEL_ANY_LIKE, timeout=15000)
@@ -203,14 +237,16 @@ class LinkedInBrowser:
     @staticmethod
     def _pressed(btn):
         try:
-            return btn.get_attribute('aria-pressed') == 'true'
+            a = btn.get_attribute('aria-label') or ''
+            return btn.get_attribute('aria-pressed') == 'true' or (a.startswith('Reaction button state') and 'no reaction' not in a)
         except (PWError, PWTimeout):
             return False
-    def like_post(self, url):
-        page = self._open_post(url)
+    def like_post(self, url, post=None):
+        page = self._open_post(url, post)
         update = self._scope(page)
         btn = self._first_visible(update, SEL_LIKE)
         if btn is None:
+            self.snapshot(page, 'action_debug.html', 'Like button not found')
             raise TemporaryError('Like button not found (LinkedIn layout may have changed)')
         if self._pressed(btn):
             return 'already_liked'
@@ -237,25 +273,28 @@ class LinkedInBrowser:
         except (PWError, PWTimeout):
             return False
         return False
-    def post_comment(self, url, text):
-        page = self._open_post(url)
+    def post_comment(self, url, text, post=None):
+        page = self._open_post(url, post)
         update = self._scope(page)
         try:
             editor = self._first_visible(update, SEL_EDITOR)
             if editor is None:
                 opener = self._first_visible(update, SEL_COMMENT_OPEN)
                 if opener is None:
+                    self.snapshot(page, 'action_debug.html', 'Comment button not found')
                     raise TemporaryError('Comment button not found (LinkedIn layout may have changed)')
                 opener.click()
                 page.wait_for_timeout(1200)
                 editor = self._first_visible(update, SEL_EDITOR)
                 if editor is None:
+                    self.snapshot(page, 'action_debug.html', 'Comment box not found')
                     raise TemporaryError('Comment box not found')
             editor.click()
             page.keyboard.insert_text(text)
             page.wait_for_timeout(900)
             submit = self._first_visible(update, SEL_SUBMIT)
             if submit is None:
+                self.snapshot(page, 'action_debug.html', 'Comment submit button not found')
                 raise TemporaryError('Comment submit button not found')
             for _ in range(10):
                 if submit.is_enabled():
@@ -273,8 +312,8 @@ class LinkedInBrowser:
         except Exception as e:
             raise ActionUncertain('Submit was clicked but the result is unknown: ' + str(e).splitlines()[0]) from e
         raise ActionUncertain('Comment was submitted but could not be confirmed on the page')
-    def verify_comment(self, url, text):
-        page = self._open_post(url)
+    def verify_comment(self, url, text, post=None):
+        page = self._open_post(url, post)
         update = self._scope(page)
         opener = self._first_visible(update, SEL_COMMENT_OPEN)
         if opener is not None:

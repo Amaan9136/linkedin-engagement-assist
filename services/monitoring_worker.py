@@ -6,7 +6,7 @@ import logging_setup
 from database import models
 from . import comment_service, engagement_service, health_service, post_collector, retry_service
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, PermanentError, ServiceUnavailable, TemporaryError
-from .linkedin_browser import LinkedInBrowser
+from .linkedin_browser import FEED_URL, LinkedInBrowser
 log = logging.getLogger('linkedin.worker')
 runtime = health_service.runtime
 class LeaseHeld(Exception):
@@ -28,6 +28,8 @@ class MonitoringWorker:
         self.ai_streak = 0
         self.ai_pause_until = 0.0
         self.browser_ok = False
+        self.scroll_until = 0.0
+        self.scroll_fresh = False
         self.start_lock = threading.Lock()
     def start(self):
         with self.start_lock:
@@ -47,6 +49,15 @@ class MonitoringWorker:
         self.browser_retry_at = 0.0
     def poll_now(self):
         self.next_poll = 0.0
+    def toggle_autoscroll(self):
+        if time.time() < self.scroll_until:
+            self.scroll_until = 0.0
+            runtime.set(autoscroll_until=None)
+            return False
+        self.scroll_until = time.time() + 180
+        self.scroll_fresh = True
+        runtime.set(autoscroll_until=models.iso_in(180))
+        return True
     def _supervise(self):
         failures = 0
         while not self.stop_evt.is_set():
@@ -109,7 +120,13 @@ class MonitoringWorker:
         self.browser_ok = bool(ready)
         self._safe(self._check_ai, None, s)
         now = time.time()
-        if not paused and now >= self.next_poll:
+        scrolling = now < self.scroll_until
+        if self.scroll_until and not scrolling:
+            self.scroll_until = 0.0
+            runtime.set(autoscroll_until=None)
+        if scrolling and ready:
+            self._safe(self._autoscroll, None, s)
+        if not scrolling and not paused and now >= self.next_poll:
             if ready:
                 self.next_poll = now + s['poll_interval']
                 runtime.set(next_poll_at=models.iso_in(s['poll_interval']))
@@ -184,6 +201,13 @@ class MonitoringWorker:
         except TemporaryError as e:
             log.warning('Polling failed: %s', e)
             return
+        new = self._store(posts, s)
+        if initial and posts:
+            models.set_meta('initial_done', '1')
+        engagement_service.enqueue_orphans(s)
+        runtime.set(last_poll_ok=models.now_iso(), auth_status='ok', auth_message='Logged in')
+        log.info('Poll complete: %d seen, %d new', len(posts), new)
+    def _store(self, posts, s):
         new = 0
         for p in posts:
             try:
@@ -193,11 +217,35 @@ class MonitoringWorker:
                     engagement_service.enqueue_for_new_post(pid, p, s)
             except Exception:
                 log.exception('Failed to store post %s', p.get('url'))
-        if initial and posts:
-            models.set_meta('initial_done', '1')
-        engagement_service.enqueue_orphans(s)
-        runtime.set(last_poll_ok=models.now_iso(), auth_status='ok', auth_message='Logged in')
-        log.info('Poll complete: %d seen, %d new', len(posts), new)
+        return new
+    def _end_scroll(self, e):
+        self.scroll_until = 0.0
+        runtime.set(autoscroll_until=None)
+        log.warning('Auto scroll stopped: %s', e)
+    def _autoscroll(self, s):
+        b = self.browser
+        try:
+            page = b._get_page()
+            if self.scroll_fresh or not page.url.startswith(FEED_URL):
+                self.scroll_fresh = False
+                page = b.goto_feed()
+            posts = post_collector.to_posts(post_collector.read_items(page), s['lookback_days'])
+            b.scroll(page)
+        except AuthRequired as e:
+            runtime.set(auth_status='auth_required', auth_message=str(e))
+            self.next_auth_check = time.time() + 60
+            self._end_scroll(e)
+            return
+        except BrowserUnavailable as e:
+            self.force_restart = True
+            self._end_scroll(e)
+            return
+        except TemporaryError as e:
+            self._end_scroll(e)
+            return
+        new = self._store(posts, s)
+        if new:
+            log.info('Auto scroll: %d seen, %d new', len(posts), new)
     def _process_jobs(self, s):
         kinds = []
         if time.time() >= self.ai_pause_until:
@@ -245,7 +293,7 @@ class MonitoringWorker:
             retry_service.defer(job, 60, str(e), True)
         except ServiceUnavailable as e:
             self.ai_streak += 1
-            pause = min(s['backoff_max'], 15 * 2 ** min(self.ai_streak - 1, 10))
+            pause = min(s['backoff_max'], max(e.retry_after, 15 * 2 ** min(self.ai_streak - 1, 10)))
             self.ai_pause_until = time.time() + pause
             runtime.set(ai_status='down', ai_message=str(e)[:200])
             log.warning('AI service unavailable; pausing AI jobs for %ds: %s', pause, e)
