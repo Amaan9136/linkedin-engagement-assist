@@ -17,8 +17,9 @@ FEED_URL = 'https://www.linkedin.com/feed/'
 AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
 SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation']"
-SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article']"
-SEL_LIKE = ['button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']"]
+SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article'], [data-view-name='feed-full-update']"
+SEL_ANY_LIKE = "button[aria-label*='like' i]"
+SEL_LIKE = ['button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']", SEL_ANY_LIKE]
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ['.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ['button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
@@ -148,7 +149,7 @@ class LinkedInBrowser:
     def goto_feed(self):
         page = self.goto(FEED_URL)
         try:
-            page.wait_for_selector(SEL_NAV + ', ' + SEL_UPDATE, state='attached', timeout=10000)
+            page.wait_for_selector(SEL_NAV + ', ' + SEL_UPDATE + ', ' + SEL_ANY_LIKE, state='attached', timeout=15000)
         except PWTimeout:
             log.warning('Feed navigation bar not detected; layout may have changed')
         return page
@@ -165,6 +166,17 @@ class LinkedInBrowser:
     def scroll(self, page):
         page.mouse.wheel(0, random.randint(1800, 2600))
         page.wait_for_timeout(random.randint(1400, 2400))
+    @staticmethod
+    def _scope(page):
+        loc = page.locator(SEL_UPDATE).first
+        return loc if loc.count() else page.locator('main').first
+    def snapshot(self, page):
+        try:
+            path = self.cfg.log_dir / 'feed_debug.html'
+            path.write_text(page.content(), encoding='utf-8')
+            log.warning('No posts found on %s (title: %s); page saved to %s', page.url, page.title(), path)
+        except Exception as e:
+            log.warning('Could not save feed snapshot: %s', e)
     def _first_visible(self, scope, selectors):
         for s in selectors:
             try:
@@ -177,7 +189,7 @@ class LinkedInBrowser:
     def _open_post(self, url):
         page = self.goto(url)
         try:
-            page.wait_for_selector(SEL_UPDATE, timeout=15000)
+            page.wait_for_selector(SEL_UPDATE + ', main ' + SEL_ANY_LIKE, timeout=15000)
         except PWTimeout as e:
             try:
                 body = _norm(page.inner_text('body'))[:3000]
@@ -196,7 +208,7 @@ class LinkedInBrowser:
             return False
     def like_post(self, url):
         page = self._open_post(url)
-        update = page.locator(SEL_UPDATE).first
+        update = self._scope(page)
         btn = self._first_visible(update, SEL_LIKE)
         if btn is None:
             raise TemporaryError('Like button not found (LinkedIn layout may have changed)')
@@ -227,7 +239,7 @@ class LinkedInBrowser:
         return False
     def post_comment(self, url, text):
         page = self._open_post(url)
-        update = page.locator(SEL_UPDATE).first
+        update = self._scope(page)
         try:
             editor = self._first_visible(update, SEL_EDITOR)
             if editor is None:
@@ -263,7 +275,7 @@ class LinkedInBrowser:
         raise ActionUncertain('Comment was submitted but could not be confirmed on the page')
     def verify_comment(self, url, text):
         page = self._open_post(url)
-        update = page.locator(SEL_UPDATE).first
+        update = self._scope(page)
         opener = self._first_visible(update, SEL_COMMENT_OPEN)
         if opener is not None:
             try:

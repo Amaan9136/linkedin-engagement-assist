@@ -2,7 +2,72 @@ import logging
 from datetime import datetime, timedelta, timezone
 from . import text_extractor as tx
 log = logging.getLogger('linkedin.collector')
-EXTRACT_JS = '() => {\n  const pick = (el, sels) => { for (const s of sels) { const n = el.querySelector(s); if (n) return n; } return null; };\n  const txt = n => n ? (n.innerText || n.textContent || \'\').trim() : \'\';\n  const out = [];\n  const seen = new Set();\n  document.querySelectorAll(\'[data-urn],[data-id]\').forEach(el => {\n    const raw = el.getAttribute(\'data-urn\') || el.getAttribute(\'data-id\') || \'\';\n    const m = raw.match(/urn:li:(activity|share|ugcPost):\\d+/);\n    if (!m || seen.has(m[0])) return;\n    if (!el.querySelector(\'.update-components-actor\') && !el.matches(\'.feed-shared-update-v2\')) return;\n    seen.add(m[0]);\n    const author = pick(el, [\'.update-components-actor__title span[aria-hidden="true"]\', \'.update-components-actor__name\', \'.update-components-actor__title\']);\n    const link = pick(el, [\'a.update-components-actor__meta-link\', \'a.update-components-actor__container-link\']);\n    const sub = pick(el, [\'.update-components-actor__sub-description\', \'.update-components-actor__description\']);\n    const body = pick(el, [\'.update-components-text\', \'.feed-shared-update-v2__description\', \'.feed-shared-text\', \'.break-words\']);\n    const title = pick(el, [\'.update-components-article__title\', \'.update-components-entity__title\', \'.feed-shared-article__title\', \'.update-components-document__title\']);\n    const desc = pick(el, [\'.update-components-article__description\', \'.update-components-entity__description\', \'.update-components-article__subtitle\']);\n    const alts = [];\n    el.querySelectorAll(\'img[alt]\').forEach(i => {\n      if (i.closest(\'.update-components-actor\')) return;\n      const a = (i.getAttribute(\'alt\') || \'\').trim();\n      if (a && a.length > 3 && !alts.includes(a)) alts.push(a);\n    });\n    out.push({urn: m[0], author: txt(author), author_url: link ? link.href : \'\', sub: txt(sub), body: txt(body),\n              title: txt(title), extra: txt(desc), alt: alts.slice(0, 6).join(\' | \')});\n  });\n  return out;\n}'
+EXTRACT_JS = r'''() => {
+  const txt = n => n ? (n.innerText || n.textContent || '').trim() : '';
+  const pick = (el, sels) => { for (const s of sels) { const n = el.querySelector(s); if (n && txt(n)) return n; } return null; };
+  const ID = /(activity|share|ugcPost)[-:](\d{10,})/;
+  const LEG = /^urn:li:(activity|share|ugcPost):\d+/;
+  const actors = "a[href*='/in/'], a[href*='/company/'], a[href*='/school/']";
+  const isLike = b => { const l = (b.getAttribute('aria-label') || '').toLowerCase(); return /^(react )?(like|unlike)\b/.test(l) && !/comment/.test(l); };
+  const urnIn = el => {
+    for (const n of [el, ...el.querySelectorAll('[data-urn],[data-id],[componentkey],a[href]')]) {
+      for (const a of ['data-urn', 'data-id', 'componentkey', 'href']) {
+        const m = (n.getAttribute(a) || '').match(ID);
+        if (m) return 'urn:li:' + m[1] + ':' + m[2];
+      }
+    }
+    return null;
+  };
+  const cards = new Set();
+  document.querySelectorAll('[data-urn],[data-id]').forEach(el => {
+    if (LEG.test(el.getAttribute('data-urn') || el.getAttribute('data-id') || '') && (el.querySelector('.update-components-actor') || el.matches('.feed-shared-update-v2'))) cards.add(el);
+  });
+  document.querySelectorAll("[data-view-name='feed-full-update']").forEach(el => cards.add(el));
+  const likes = [...document.querySelectorAll("button[aria-label],[role='button'][aria-label]")].filter(isLike);
+  likes.forEach(b => {
+    let el = b;
+    for (let i = 0; i < 14 && el.parentElement && !['MAIN', 'BODY'].includes(el.parentElement.tagName); i++) {
+      if (likes.filter(x => el.parentElement.contains(x)).length > 1) break;
+      el = el.parentElement;
+    }
+    cards.add(el);
+  });
+  const out = [];
+  const seen = new Set();
+  cards.forEach(el => {
+    const urn = urnIn(el);
+    if (!urn || seen.has(urn)) return;
+    seen.add(urn);
+    const link = pick(el, ['a.update-components-actor__meta-link', 'a.update-components-actor__container-link']) || [...el.querySelectorAll(actors)].find(a => txt(a));
+    const author = pick(el, ['.update-components-actor__title span[aria-hidden="true"]', '.update-components-actor__name', '.update-components-actor__title']) || link;
+    let sub = txt(pick(el, ['.update-components-actor__sub-description', '.update-components-actor__description']));
+    let promoted = false;
+    el.querySelectorAll('*').forEach(n => {
+      if (n.children.length) return;
+      const t = txt(n);
+      if (t.length > 40) return;
+      if (/^promoted\b/i.test(t)) promoted = true;
+      else if (!sub && /^\d+\s*(s|m|h|d|w|mo|yr)\b/i.test(t)) sub = t;
+    });
+    let body = txt(pick(el, ['.update-components-text', '.feed-shared-update-v2__description', '.feed-shared-text', "[data-testid='expandable-text-box']", '.break-words']));
+    if (!body) {
+      for (const s of ["span[dir='ltr']", 'p', "div[dir='ltr']"]) {
+        el.querySelectorAll(s).forEach(n => { const t = txt(n); if (t.length > body.length && !n.closest('button,' + actors)) body = t; });
+        if (body) break;
+      }
+    }
+    const title = pick(el, ['.update-components-article__title', '.update-components-entity__title', '.feed-shared-article__title', '.update-components-document__title']);
+    const desc = pick(el, ['.update-components-article__description', '.update-components-entity__description', '.update-components-article__subtitle']);
+    const alts = [];
+    el.querySelectorAll('img[alt]').forEach(i => {
+      if (i.closest('.update-components-actor') || i.closest(actors)) return;
+      const a = (i.getAttribute('alt') || '').trim();
+      if (a && a.length > 3 && !alts.includes(a)) alts.push(a);
+    });
+    out.push({urn, author: txt(author), author_url: link ? link.href : '', sub: promoted ? 'promoted' : sub, body, title: txt(title), extra: txt(desc), alt: alts.slice(0, 6).join(' | ')});
+  });
+  return out;
+}'''
 def _to_post(item, cutoff):
     sub = item.get('sub') or ''
     if 'promoted' in sub.lower():
@@ -28,6 +93,8 @@ def collect(browser, deep=False, lookback_days=7):
         if stagnant >= 3:
             break
         browser.scroll(page)
+    if not seen:
+        browser.snapshot(page)
     posts = []
     for it in seen.values():
         try:
