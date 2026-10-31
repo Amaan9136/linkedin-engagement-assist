@@ -18,7 +18,7 @@ AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
 SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation'], [data-testid='primary-nav']"
 SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article'], [data-view-name='feed-full-update'], [componentkey^='update-card']"
-SEL_ANY_LIKE = "button[aria-label*='like' i]"
+SEL_ANY_LIKE = "button[aria-label*='like' i], button[aria-label^='Reaction button state']"
 SEL_LIKE = ["button[aria-label^='Reaction button state']", 'button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']", SEL_ANY_LIKE]
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ['.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
@@ -33,6 +33,8 @@ class LinkedInBrowser:
         self._ctx = None
         self._page = None
         self._card = None
+        self._links = {}
+        self._link_fail = 0
     @property
     def started(self):
         return self._ctx is not None
@@ -56,6 +58,7 @@ class LinkedInBrowser:
             if self.cfg.block_media and self.cfg.headless:
                 self._ctx.route('**/*', self._route)
             self._ctx.set_default_timeout(20000)
+            self._ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin='https://www.linkedin.com')
             self._ctx.set_default_navigation_timeout(45000)
             self._page = None
             self._get_page()
@@ -188,6 +191,37 @@ class LinkedInBrowser:
             except (PWError, PWTimeout):
                 continue
         return None
+    def _copy_link(self, page, card):
+        try:
+            page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first.locator("button[aria-label^='Open control menu for post by']").first.click(timeout=4000)
+            page.get_by_text(re.compile('copy link to post', re.I)).first.click(timeout=4000)
+            page.wait_for_timeout(500)
+            m = re.search(r'(activity|share|ugcPost)[-:](\d{10,})', page.evaluate('navigator.clipboard.readText()') or '')
+            self._link_fail = 0 if m else self._link_fail + 1
+            self.pause(page, 600, 1200)
+            return f'urn:li:{m.group(1)}:{m.group(2)}' if m else None
+        except (PWError, PWTimeout):
+            self._link_fail += 1
+            if self._link_fail == 1:
+                self.snapshot(page, 'menu_debug.html', 'Copy link menu not found')
+            page.keyboard.press('Escape')
+            return None
+    def resolve_links(self, page, items, limit=2):
+        for it in items:
+            card = it.get('card')
+            if not card:
+                continue
+            if not it['urn'].startswith('card:'):
+                self._links[card] = it['urn']
+            elif card in self._links:
+                it['urn'] = self._links[card]
+            elif limit > 0 and self._link_fail < 3:
+                limit -= 1
+                urn = self._copy_link(page, card)
+                if urn:
+                    self._links[card] = urn
+                    it['urn'] = urn
+        return items
     def _find_card(self, page, url, post):
         m = re.search(r'[?&]card=([\w-]+)', url)
         snip = _norm(post['body'] if post else '')[:40]
@@ -206,7 +240,7 @@ class LinkedInBrowser:
                     page.mouse.wheel(0, -100000)
                     page.wait_for_timeout(800)
                 card = self._find_card(page, url, post)
-                for _ in range(30):
+                for _ in range(12):
                     if card:
                         break
                     page.mouse.wheel(0, 700)

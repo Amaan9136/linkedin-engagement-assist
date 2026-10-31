@@ -229,7 +229,7 @@ class MonitoringWorker:
             if self.scroll_fresh or not page.url.startswith(FEED_URL):
                 self.scroll_fresh = False
                 page = b.goto_feed()
-            posts = post_collector.to_posts(post_collector.read_items(page), s['lookback_days'])
+            posts = post_collector.to_posts(post_collector.read_items(page, b), s['lookback_days'])
             b.scroll(page)
         except AuthRequired as e:
             runtime.set(auth_status='auth_required', auth_message=str(e))

@@ -9,16 +9,16 @@ EXTRACT_JS = r'''() => {
   const LEG = /^urn:li:(activity|share|ugcPost):\d+/;
   const actors = "a[href*='/in/'], a[href*='/company/'], a[href*='/school/']";
   const isLike = b => { const l = (b.getAttribute('aria-label') || '').toLowerCase(); return /^((react )?(like|unlike)\b|reaction button state)/.test(l) && !/comment/.test(l); };
+  const dec = s => { try { return decodeURIComponent(s); } catch (e) { return s; } };
+  const cardOf = el => { const k = (el.getAttribute('componentkey') || '').match(/^update-card-focus(.+?)(?:FeedType_\w+)?$/); return k ? k[1] : ''; };
   const urnIn = el => {
-    const k = (el.getAttribute('componentkey') || '').match(/^update-card-focus(.+?)(?:FeedType_\w+)?$/);
-    if (k) return 'card:' + k[1];
-    for (const n of [el, ...el.querySelectorAll('[data-urn],[data-id],[componentkey],a[href]')]) {
-      for (const a of ['data-urn', 'data-id', 'componentkey', 'href']) {
-        const m = (n.getAttribute(a) || '').match(ID);
+    for (const n of [el, ...el.querySelectorAll('[data-urn],[data-id],[componentkey],[data-sdui-anchor-id],a[href]')]) {
+      for (const a of ['data-urn', 'data-id', 'componentkey', 'data-sdui-anchor-id', 'href']) {
+        const m = dec(n.getAttribute(a) || '').match(ID);
         if (m) return 'urn:li:' + m[1] + ':' + m[2];
       }
     }
-    return null;
+    return cardOf(el) ? 'card:' + cardOf(el) : null;
   };
   const cards = new Set();
   document.querySelectorAll('[data-urn],[data-id]').forEach(el => {
@@ -68,7 +68,7 @@ EXTRACT_JS = r'''() => {
       const a = (i.getAttribute('alt') || '').trim();
       if (a && a.length > 3 && !alts.includes(a)) alts.push(a);
     });
-    out.push({urn, author: by || txt(author), author_url: link ? link.href : '', sub: promoted ? 'promoted' : sub, body, title: txt(title), extra: txt(desc), alt: alts.slice(0, 6).join(' | ')});
+    out.push({urn, card: cardOf(el), author: by || txt(author), author_url: link ? link.href : '', sub: promoted ? 'promoted' : sub, body, title: txt(title), extra: txt(desc), alt: alts.slice(0, 6).join(' | ')});
   });
   return out;
 }'''
@@ -82,11 +82,13 @@ def _to_post(item, cutoff):
         return None
     urn = item['urn']
     author_url = (item.get('author_url') or '').split('?')[0] or None
-    return {'external_id': urn, 'url': f'https://www.linkedin.com/feed/?card={urn[5:]}' if urn.startswith('card:') else tx.normalize_url(f'https://www.linkedin.com/feed/update/{urn}/'), 'author_name': tx.clean_text(item.get('author')).split('\n')[0] or None, 'author_url': author_url, 'title': tx.clean_text(item.get('title')) or None, 'body': tx.clean_text(item.get('body')) or None, 'alt_text': tx.clean_text(item.get('alt')) or None, 'extra_text': tx.clean_text(item.get('extra')) or None, 'published_at': published}
-def read_items(page):
+    card = item.get('card')
+    return {'external_id': urn, 'alias': f'card:{card}' if card and (not urn.startswith('card:')) else None, 'url': f'https://www.linkedin.com/feed/?card={urn[5:]}' if urn.startswith('card:') else tx.normalize_url(f'https://www.linkedin.com/feed/update/{urn}/'), 'author_name': tx.clean_text(item.get('author')).split('\n')[0] or None, 'author_url': author_url, 'title': tx.clean_text(item.get('title')) or None, 'body': tx.clean_text(item.get('body')) or None, 'alt_text': tx.clean_text(item.get('alt')) or None, 'extra_text': tx.clean_text(item.get('extra')) or None, 'published_at': published}
+def read_items(page, browser=None):
     if page.evaluate(EXPAND_JS):
         page.wait_for_timeout(700)
-    return page.evaluate(EXTRACT_JS)
+    items = page.evaluate(EXTRACT_JS)
+    return browser.resolve_links(page, items) if browser else items
 def to_posts(items, lookback_days):
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     posts = []
@@ -104,7 +106,7 @@ def collect(browser, deep=False, lookback_days=7):
     seen = {}
     stagnant = 0
     for _ in range(max_scrolls):
-        items = read_items(page)
+        items = read_items(page, browser)
         before = len(seen)
         for it in items:
             seen.setdefault(it['urn'], it)

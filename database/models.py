@@ -59,6 +59,10 @@ def upsert_post(p):
         row = None
         if p.get('external_id'):
             row = c.execute('SELECT id, ai_status FROM posts WHERE external_id=?', (p['external_id'],)).fetchone()
+        if not row and p.get('alias'):
+            row = c.execute('SELECT id, ai_status FROM posts WHERE external_id=?', (p['alias'],)).fetchone()
+            if row:
+                c.execute('UPDATE posts SET external_id=?, url=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM posts WHERE url=? AND id<>?)', (p['external_id'], p['url'], row['id'], p['url'], row['id']))
         if not row:
             row = c.execute('SELECT id, ai_status FROM posts WHERE url=?', (p['url'],)).fetchone()
         if row:
