@@ -82,9 +82,11 @@ def _to_post(item, cutoff):
     if published and datetime.strptime(published, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc) < cutoff:
         return None
     urn = item['urn']
+    if urn.startswith('card:'):
+        return None
     author_url = (item.get('author_url') or '').split('?')[0] or None
     card = item.get('card')
-    return {'external_id': urn, 'alias': f'card:{card}' if card and (not urn.startswith('card:')) else None, 'url': f'https://www.linkedin.com/feed/?card={urn[5:]}' if urn.startswith('card:') else tx.normalize_url(f'https://www.linkedin.com/feed/update/{urn}/'), 'author_name': tx.clean_text(item.get('author')).split('\n')[0] or None, 'author_url': author_url, 'title': tx.clean_text(item.get('title')) or None, 'body': tx.clean_text(item.get('body')) or None, 'alt_text': tx.clean_text(item.get('alt')) or None, 'extra_text': tx.clean_text(item.get('extra')) or None, 'published_at': published}
+    return {'external_id': urn, 'alias': f'card:{card}' if card else None, 'url': tx.normalize_url(f'https://www.linkedin.com/feed/update/{urn}/'), 'author_name': tx.clean_text(item.get('author')).split('\n')[0] or None, 'author_url': author_url, 'title': tx.clean_text(item.get('title')) or None, 'body': tx.clean_text(item.get('body')) or None, 'alt_text': tx.clean_text(item.get('alt')) or None, 'extra_text': tx.clean_text(item.get('extra')) or None, 'published_at': published}
 def read_items(page, browser=None):
     if page.evaluate(EXPAND_JS):
         page.wait_for_timeout(700)

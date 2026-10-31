@@ -3,6 +3,7 @@ import random
 import re
 import subprocess
 import sys
+from urllib.parse import unquote
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, PermanentError, TemporaryError
 try:
     from playwright.sync_api import Error as PWError
@@ -59,6 +60,7 @@ class LinkedInBrowser:
                 self._ctx.route('**/*', self._route)
             self._ctx.set_default_timeout(20000)
             self._ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin='https://www.linkedin.com')
+            self._ctx.add_init_script("(() => { const p = Clipboard.prototype, w = p.writeText; p.writeText = function (t) { window.__copied = t; return w.apply(this, arguments); }; document.addEventListener('copy', () => { const t = String(getSelection()); if (t) window.__copied = t; }, true); })()")
             self._ctx.set_default_navigation_timeout(45000)
             self._page = None
             self._get_page()
@@ -191,26 +193,65 @@ class LinkedInBrowser:
             except (PWError, PWTimeout):
                 continue
         return None
+    @staticmethod
+    def _urn_of(text):
+        m = re.search(r'(activity|share|ugcPost)[-:](\d{10,})', unquote(text or ''))
+        return f'urn:li:{m.group(1)}:{m.group(2)}' if m else None
+    def _resolve_short(self, url):
+        if not url.startswith('http'):
+            return None
+        try:
+            urn = self._urn_of(self._ctx.request.get(url, timeout=10000).url)
+            if urn:
+                return urn
+        except (PWError, PWTimeout):
+            pass
+        tab = None
+        try:
+            tab = self._ctx.new_page()
+            tab.goto(url, wait_until='domcontentloaded')
+            tab.wait_for_url(re.compile(r'linkedin\.com/(posts|feed/update)'), timeout=8000)
+            return self._urn_of(tab.url)
+        except (PWError, PWTimeout):
+            return None
+        finally:
+            if tab is not None:
+                tab.close()
     def _copy_link(self, page, card):
         try:
-            page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first.locator("[aria-label='Send']").first.click(timeout=4000)
-            page.get_by_text(re.compile('copy link to post', re.I)).first.click(timeout=4000)
-            page.wait_for_timeout(500)
-            m = re.search(r'(activity|share|ugcPost)[-:](\d{10,})', page.evaluate('navigator.clipboard.readText()') or '')
-            self._link_fail = 0 if m else self._link_fail + 1
+            page.evaluate('window.__copied = null')
+            scope = page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first
+            copy = page.get_by_text(re.compile('copy link', re.I)).first
+            scope.locator("button[aria-label^='Open control menu for post by']").first.click(timeout=4000)
+            try:
+                copy.click(timeout=4000)
+            except PWTimeout:
+                page.keyboard.press('Escape')
+                scope.locator("[aria-label='Send']").first.click(timeout=4000)
+                copy.click(timeout=4000)
+            try:
+                page.wait_for_function('window.__copied', timeout=3000)
+            except PWTimeout:
+                pass
+            raw = page.evaluate("window.__copied || navigator.clipboard.readText().catch(() => '')") or ''
+            urn = self._urn_of(raw) or self._resolve_short(raw)
+            self._link_fail = 0 if urn else self._link_fail + 1
+            if not urn:
+                log.warning('Copied text had no post id (clipboard: %r)', raw[:120])
             page.keyboard.press('Escape')
             self.pause(page, 600, 1200)
-            return f'urn:li:{m.group(1)}:{m.group(2)}' if m else None
+            return urn
         except (PWError, PWTimeout):
             self._link_fail += 1
             if self._link_fail == 1:
                 self.snapshot(page, 'menu_debug.html', 'Copy link menu not found')
             page.keyboard.press('Escape')
             return None
-    def resolve_links(self, page, items, limit=4):
+    def resolve_links(self, page, items, limit=25):
+        self._link_fail = 0
         for it in items:
             card = it.get('card')
-            if not card:
+            if not card or 'promoted' in (it.get('sub') or '').lower():
                 continue
             if not it['urn'].startswith('card:'):
                 self._links[card] = it['urn']
