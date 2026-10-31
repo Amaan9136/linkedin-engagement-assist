@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 from config import load_dotenv_safe_db_path
 def backup(db_path, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / f'linkedin_ai_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db'
+    target = out_dir / f'linkedin_ai_{datetime.now().strftime("%Y%m%d_%H%M%S")}.db'
     src = sqlite3.connect(str(db_path))
     dst = sqlite3.connect(str(target))
     with dst:

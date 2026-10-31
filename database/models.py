@@ -159,7 +159,7 @@ def list_events(level=None, component=None, post_id=None, limit=200):
     order = {'DEBUG': 0, 'INFO': 1, 'WARNING': 2, 'ERROR': 3, 'CRITICAL': 4}
     if level and level in order:
         names = [k for k, v in order.items() if v >= order[level]]
-        where.append(f'level IN ({','.join('?' * len(names))})')
+        where.append(f'level IN ({",".join("?" * len(names))})')
         params += names
     if component:
         where.append('component=?')
@@ -167,7 +167,7 @@ def list_events(level=None, component=None, post_id=None, limit=200):
     if post_id:
         where.append('post_id=?')
         params.append(post_id)
-    rows = db.query(f'SELECT * FROM events WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?', (*params, min(limit, 1000)))
+    rows = db.query(f'SELECT * FROM events WHERE {" AND ".join(where)} ORDER BY id DESC LIMIT ?', (*params, min(limit, 1000)))
     return [dict(r) for r in rows]
 def prune_events(days=30):
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(FMT)

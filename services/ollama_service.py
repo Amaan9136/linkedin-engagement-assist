@@ -13,7 +13,7 @@ def generate(prompt, system, s):
     except requests.ConnectionError as e:
         raise ServiceUnavailable(f"Ollama is not reachable at {s['ollama_endpoint']}. Start it with 'ollama serve'.") from e
     except requests.Timeout as e:
-        raise TemporaryError(f'Ollama did not answer within {s['ai_timeout']}s') from e
+        raise TemporaryError(f'Ollama did not answer within {s["ai_timeout"]}s') from e
     except requests.RequestException as e:
         raise TemporaryError(f'Ollama request failed: {e}') from e
     if r.status_code == 404:

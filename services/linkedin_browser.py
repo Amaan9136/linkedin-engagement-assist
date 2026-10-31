@@ -41,12 +41,12 @@ class LinkedInBrowser:
         try:
             self.cfg.profile_dir.mkdir(parents=True, exist_ok=True)
             self._pw = sync_playwright().start()
-            args = ['--disable-dev-shm-usage']
+            args = ['--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
             if sys.platform.startswith('linux'):
                 args.append('--password-store=basic')
             if self.cfg.no_sandbox:
                 args.append('--no-sandbox')
-            kw = {'user_data_dir': str(self.cfg.profile_dir), 'headless': self.cfg.headless, 'args': args, 'viewport': {'width': 1280, 'height': 900}, 'locale': 'en-US'}
+            kw = {'user_data_dir': str(self.cfg.profile_dir), 'headless': self.cfg.headless, 'args': args, 'viewport': {'width': 1280, 'height': 900}, 'locale': 'en-US', 'ignore_default_args': ['--enable-automation']}
             if self.cfg.chromium_exec:
                 kw['executable_path'] = self.cfg.chromium_exec
             self._ctx = self._pw.chromium.launch_persistent_context(**kw)
@@ -64,7 +64,7 @@ class LinkedInBrowser:
             raise BrowserUnavailable(self._explain(e)) from e
     @staticmethod
     def _route(route):
-        if route.request.resource_type in ('image', 'media', 'font'):
+        if route.request.resource_type in ('image', 'media', 'font') and (not any((h in route.request.url for h in ('google.com', 'gstatic.com', 'recaptcha')))):
             route.abort()
         else:
             route.continue_()
@@ -144,6 +144,10 @@ class LinkedInBrowser:
         return page
     def check_session(self):
         try:
+            if not self.cfg.headless:
+                url = self._get_page().url.lower()
+                if 'linkedin.com' in url and any((m in url for m in AUTH_MARKERS)):
+                    return ('auth_required', 'Complete the sign-in or verification in the open browser window')
             self.goto_feed()
             return ('ok', 'Logged in')
         except AuthRequired as e:

@@ -77,7 +77,7 @@ def _coerce(spec, v):
         except ValueError:
             raise ValueError('must be a whole number')
         if not spec['min'] <= n <= spec['max']:
-            raise ValueError(f'must be between {spec['min']} and {spec['max']}')
+            raise ValueError(f'must be between {spec["min"]} and {spec["max"]}')
         return n
     s = str(v).strip()
     if t == 'choice':
@@ -88,7 +88,7 @@ def _coerce(spec, v):
     if not s:
         raise ValueError('must not be empty')
     if len(s) > spec.get('max', 500):
-        raise ValueError(f'must be at most {spec.get('max', 500)} characters')
+        raise ValueError(f'must be at most {spec.get("max", 500)} characters')
     if t == 'url':
         if not s.lower().startswith(('http://', 'https://')):
             raise ValueError('must start with http:// or https://')
@@ -118,7 +118,7 @@ def default_settings():
         try:
             out[k] = _coerce(spec, val)
         except ValueError as ex:
-            errors.append(f'{spec.get('env', k)}: {ex}')
+            errors.append(f'{spec.get("env", k)}: {ex}')
             out[k] = spec['default']
     if out['backoff_max'] < out['backoff_base']:
         errors.append('BACKOFF_MAX must be >= BACKOFF_BASE')
