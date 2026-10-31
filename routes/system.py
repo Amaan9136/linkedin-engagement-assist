@@ -1,0 +1,44 @@
+from flask import Blueprint, current_app, request
+from database import models
+from services import health_service
+from . import api, fail, ok
+bp = Blueprint('system_api', __name__)
+@bp.get('/api/health')
+@api
+def health():
+    return ok(health=health_service.health(models.all_settings(), current_app.extensions['worker']))
+@bp.post('/api/monitor/pause')
+@api
+def pause():
+    models.set_settings({'monitoring_enabled': False})
+    return ok(message='Monitoring paused. Queued work is kept.')
+@bp.post('/api/monitor/resume')
+@api
+def resume():
+    models.set_settings({'monitoring_enabled': True})
+    worker = current_app.extensions['worker']
+    worker.start()
+    worker.poll_now()
+    return ok(message='Monitoring resumed')
+@bp.post('/api/monitor/poll-now')
+@api
+def poll_now():
+    current_app.extensions['worker'].poll_now()
+    return ok(message='Poll scheduled')
+@bp.post('/api/browser/restart')
+@api
+def restart_browser():
+    current_app.extensions['worker'].request_browser_restart()
+    return ok(message='Browser restart requested')
+@bp.get('/api/logs')
+@api
+def logs():
+    level = request.args.get('level') or None
+    component = (request.args.get('component') or '').strip()[:40] or None
+    post_id = request.args.get('post_id')
+    try:
+        pid = int(post_id) if post_id else None
+        limit = int(request.args.get('limit', 200))
+    except ValueError:
+        return fail('Invalid filter')
+    return ok(events=models.list_events(level, component, pid, limit))

@@ -1,8 +1,8 @@
-# LinkedIn Promotion Manager
+# LinkedIn Engagement Assistant
 
 ## About
 
-LinkedIn Promotion Manager is a personal tool that helps monitor LinkedIn posts, generate AI-powered comments, and manage post engagement from a single web dashboard.
+LinkedIn Engagement Assistant is a personal tool that helps monitor LinkedIn posts, generate AI-powered comments, and manage post engagement from a single web dashboard.
 
 It checks for new posts from your network, reads their available text, and uses AI to generate relevant comments that sound natural. You can review, edit, approve, or automate engagement based on your preferences.
 

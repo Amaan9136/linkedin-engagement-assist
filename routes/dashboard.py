@@ -1,0 +1,29 @@
+from flask import Blueprint, current_app, render_template
+from database import models
+from services.health_service import runtime
+from . import api, login_required, ok
+bp = Blueprint('dashboard', __name__)
+@bp.get('/')
+@login_required
+def index():
+    return render_template('dashboard.html', page='dashboard')
+@bp.get('/posts')
+@login_required
+def posts_page():
+    return render_template('posts.html', page='posts')
+@bp.get('/settings')
+@login_required
+def settings_page():
+    return render_template('settings.html', page='settings')
+@bp.get('/logs')
+@login_required
+def logs_page():
+    return render_template('logs.html', page='logs')
+@bp.get('/api/stats')
+@api
+def stats():
+    s = models.all_settings()
+    worker = current_app.extensions['worker']
+    snap = runtime.snapshot()
+    snap['worker_alive'] = worker.alive()
+    return ok(stats=models.stats(), status=snap, config={'poll_interval': s['poll_interval'], 'publishing_mode': s['publishing_mode'], 'monitoring_enabled': s['monitoring_enabled'], 'timezone': s['timezone']})

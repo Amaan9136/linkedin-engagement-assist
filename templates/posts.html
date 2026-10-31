@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+<div class="toolbar">
+<select id="filter">
+<option value="all">All posts</option>
+<option value="recent">Recent (24h)</option>
+<option value="older_unprocessed">Older unprocessed</option>
+<option value="pending_ai">Pending AI</option>
+<option value="drafts">Drafts ready</option>
+<option value="awaiting_approval">Awaiting approval</option>
+<option value="commented">Commented</option>
+<option value="liked">Liked</option>
+<option value="failed">Failed / retrying</option>
+<option value="skipped">Skipped</option>
+<option value="verification">Verification required</option>
+</select>
+<input id="search" type="search" placeholder="Search author, text, draft">
+<button class="btn" id="btn-refresh">Refresh</button>
+</div>
+<div class="toolbar bulk">
+<label class="check"><input type="checkbox" id="select-all"> Select all</label>
+<select id="bulk-action">
+<option value="">Bulk action…</option>
+<option value="generate">Generate drafts</option>
+<option value="like">Like</option>
+<option value="retry">Retry failed</option>
+<option value="skip">Mark skipped</option>
+<option value="reset">Reset skip</option>
+<option value="open">Open selected</option>
+</select>
+<button class="btn" id="bulk-run">Apply</button>
+<span id="count" class="muted"></span>
+</div>
+</section>
+<div id="posts"></div>
+<div class="pager"><button class="btn" id="prev">Previous</button><span id="page-info" class="muted"></span><button class="btn" id="next">Next</button></div>
+<dialog id="detail"></dialog>
+{% endblock %}
