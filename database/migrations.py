@@ -20,6 +20,9 @@ def migrate():
         except BaseException:
             c.execute('ROLLBACK')
             raise
+    if db.recovered:
+        log.warning('Database was corrupted; restoring readable rows from %s', db.recovered)
+        db.salvage()
     return max([current] + [v for v, _ in MIGRATIONS])
 def _split(sql):
     out = []
