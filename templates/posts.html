@@ -1,37 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="panel">
+<h2>Posts</h2>
+<p class="hint">Every post found in your feed, with tools to draft, like, comment on and skip them.</p>
 <div class="toolbar">
 <select id="filter">
-<option value="all">All posts</option>
-<option value="recent">Recent (24h)</option>
-<option value="older_unprocessed">Older unprocessed</option>
-<option value="pending_ai">Pending AI</option>
-<option value="drafts">Drafts ready</option>
-<option value="awaiting_approval">Awaiting approval</option>
-<option value="commented">Commented</option>
-<option value="liked">Liked</option>
-<option value="failed">Failed / retrying</option>
-<option value="skipped">Skipped</option>
-<option value="verification">Verification required</option>
+<option value="all" data-hint="Every post stored from your feed.">All posts</option>
+<option value="feed" data-hint="Every post that can still be liked or commented on.">Feed (can like or comment)</option>
+<option value="recent" data-hint="Posts discovered in the last 24 hours.">Recent (24h)</option>
+<option value="older_unprocessed" data-hint="Older posts that never got a draft.">Older unprocessed</option>
+<option value="pending_ai" data-hint="Posts waiting for or getting an AI draft.">Pending AI</option>
+<option value="drafts" data-hint="Posts with a comment draft ready.">Drafts ready</option>
+<option value="awaiting_approval" data-hint="Drafts you have not approved yet.">Awaiting approval</option>
+<option value="commented" data-hint="Posts where your comment is published.">Commented</option>
+<option value="liked" data-hint="Posts that are liked.">Liked</option>
+<option value="failed" data-hint="Posts with failed or retrying work.">Failed / retrying</option>
+<option value="skipped" data-hint="Posts excluded from automation.">Skipped</option>
+<option value="verification" data-hint="Posts whose like or comment needs a manual check.">Verification required</option>
 </select>
 <input id="search" type="search" placeholder="Search author, text, draft">
 <button class="btn" id="btn-refresh">Refresh</button>
 </div>
+<p id="filter-hint" class="hint"></p>
 <div class="toolbar bulk">
 <label class="check"><input type="checkbox" id="select-all"> Select all</label>
 <select id="bulk-action">
 <option value="">Bulk action…</option>
-<option value="generate">Generate drafts</option>
-<option value="like">Like</option>
-<option value="retry">Retry failed</option>
-<option value="skip">Mark skipped</option>
-<option value="reset">Reset skip</option>
-<option value="open">Open selected</option>
+<option value="generate" data-hint="Write AI drafts for the selected posts.">Generate drafts</option>
+<option value="like" data-hint="Like the selected posts.">Like</option>
+<option value="retry" data-hint="Retry failed work on the selected posts.">Retry failed</option>
+<option value="skip" data-hint="Exclude the selected posts from automation.">Mark skipped</option>
+<option value="reset" data-hint="Put skipped posts back into automation.">Reset skip</option>
+<option value="open" data-hint="Open up to 10 selected posts on LinkedIn.">Open selected</option>
 </select>
 <button class="btn" id="bulk-run">Apply</button>
 <span id="count" class="muted"></span>
 </div>
+<p id="bulk-hint" class="hint"></p>
 </section>
 <div id="posts"></div>
 <div class="pager"><button class="btn" id="prev">Previous</button><span id="page-info" class="muted"></span><button class="btn" id="next">Next</button></div>

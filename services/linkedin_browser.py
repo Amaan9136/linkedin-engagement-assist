@@ -15,7 +15,7 @@ log = logging.getLogger('linkedin.browser')
 FEED_URL = 'https://www.linkedin.com/feed/'
 AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
-SEL_NAV = '#global-nav, nav.global-nav, header.global-nav'
+SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation']"
 SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[role='article']"
 SEL_LIKE = ['button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']"]
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
@@ -140,7 +140,7 @@ class LinkedInBrowser:
     def goto_feed(self):
         page = self.goto(FEED_URL)
         try:
-            page.wait_for_selector(SEL_NAV, timeout=10000)
+            page.wait_for_selector(SEL_NAV + ', ' + SEL_UPDATE, state='attached', timeout=10000)
         except PWTimeout:
             log.warning('Feed navigation bar not detected; layout may have changed')
         return page

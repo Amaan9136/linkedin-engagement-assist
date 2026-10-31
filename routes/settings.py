@@ -6,7 +6,7 @@ bp = Blueprint('settings_api', __name__)
 def _public_specs():
     out = {}
     for k, v in SETTING_SPECS.items():
-        out[k] = {'type': v['type'], 'label': v['label'], 'choices': v.get('choices'), 'min': v.get('min'), 'max': v.get('max')}
+        out[k] = {'type': v['type'], 'label': v['label'], 'choices': v.get('choices'), 'min': v.get('min'), 'max': v.get('max'), 'help': v.get('help'), 'choice_help': v.get('choice_help')}
     return out
 @bp.get('/api/settings')
 @api

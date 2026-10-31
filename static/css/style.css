@@ -17,6 +17,8 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;bac
 .label{color:var(--muted);font-size:.8rem}
 .card strong{font-size:1.6rem}
 .muted{color:var(--muted);font-size:.9rem}
+.hint{display:block;margin:0;color:var(--muted);font-size:.78rem}
+.field-text{display:flex;flex-direction:column;gap:2px}
 .actions,.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
 .toolbar{margin-top:0;margin-bottom:8px}
 input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text);max-width:100%}
@@ -70,4 +72,21 @@ table.logs td.msg{word-break:break-word;min-width:260px}
 .login-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(380px,92vw);display:flex;flex-direction:column;gap:10px}
 .login-card h1{font-size:1.3rem;margin:0 0 8px}
 .error{color:var(--bad);margin:0}
-@media(max-width:600px){.post{grid-template-columns:1fr}.topbar{padding:8px 10px}.container{padding:10px}}
+.panel h2+.hint{margin:-8px 0 12px}
+@media(max-width:600px){
+.post{grid-template-columns:1fr}
+.topbar{padding:8px 10px;gap:8px}
+.brand{flex:1 1 0;min-width:0;font-size:.95rem}
+.right{order:2}
+.topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto}
+.topbar nav a{flex:1;text-align:center;white-space:nowrap;padding:8px 10px}
+.container{padding:10px}
+.panel{padding:12px}
+.status-grid,.cards{grid-template-columns:repeat(2,1fr);gap:8px}
+.form-grid{grid-template-columns:1fr}
+.actions .btn{flex:1 1 calc(50% - 8px)}
+.toolbar select,.toolbar input:not([type=checkbox]),.toolbar .btn{flex:1 1 100%}
+.row-actions .btn{flex:1 1 auto}
+.pager{gap:8px}
+dialog{padding:12px}
+}

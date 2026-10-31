@@ -107,6 +107,11 @@ async function refreshStatus() {
     pill.className = 'pill pill-bad';
   }
 }
+function hint(sel, out) {
+  const sync = () => { out.textContent = sel.selectedOptions[0].dataset.hint || ''; };
+  sel.addEventListener('change', sync);
+  sync();
+}
 function initDashboard() {
   $('#btn-pause').onclick = () => act(() => api('POST', '/api/monitor/pause')).then(refreshStatus);
   $('#btn-resume').onclick = () => act(() => api('POST', '/api/monitor/resume')).then(refreshStatus);
@@ -214,6 +219,8 @@ async function openDetail(id) {
   dlg.showModal();
 }
 function initPosts() {
+  hint($('#filter'), $('#filter-hint'));
+  hint($('#bulk-action'), $('#bulk-hint'));
   $('#filter').onchange = e => { state.filter = e.target.value; state.page = 1; loadPosts(); };
   let t;
   $('#search').oninput = e => { clearTimeout(t); t = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadPosts(); }, 300); };
@@ -251,10 +258,10 @@ function field(key, spec, value) {
   if (spec.type === 'bool') {
     input = h('input', {type: 'checkbox', id, name: key});
     input.checked = !!value;
-    return h('div', {class: 'field bool', 'data-key': key}, input, h('label', {for: id}, spec.label), h('span', {class: 'error'}));
+    return h('div', {class: 'field bool', 'data-key': key}, input, h('div', {class: 'field-text'}, h('label', {for: id}, spec.label), h('span', {class: 'hint'}, spec.help)), h('span', {class: 'error'}));
   }
   if (spec.type === 'choice') {
-    input = h('select', {id, name: key}, spec.choices.map(c => h('option', {value: c}, c)));
+    input = h('select', {id, name: key}, spec.choices.map(c => h('option', {value: c}, spec.choice_help ? c + ' – ' + spec.choice_help[c] : c)));
     input.value = value;
   } else if (key === 'comment_style') {
     input = h('textarea', {id, name: key, maxlength: '500'});
@@ -263,7 +270,7 @@ function field(key, spec, value) {
     input = h('input', {id, name: key, type: spec.type === 'int' ? 'number' : 'text', min: spec.min, max: spec.max});
     input.value = value;
   }
-  return h('div', {class: 'field', 'data-key': key}, h('label', {for: id}, spec.label), input, h('span', {class: 'error'}));
+  return h('div', {class: 'field', 'data-key': key}, h('label', {for: id}, spec.label), h('span', {class: 'hint'}, spec.help), input, h('span', {class: 'error'}));
 }
 async function initSettings() {
   const form = $('#settings-form');
@@ -315,6 +322,7 @@ async function loadLogs() {
   }
 }
 function initLogs() {
+  hint($('#log-level'), $('#log-hint'));
   $('#log-refresh').onclick = loadLogs;
   $('#log-clear').onclick = async () => {
     if (!confirm('Delete all log entries and empty the log file?')) return;

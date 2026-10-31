@@ -2,13 +2,14 @@
 {% block content %}
 <section class="panel">
 <h2>Status</h2>
+<p class="hint">Live health and controls for monitoring, with totals for your posts below.</p>
 <div class="status-grid">
-<div><span class="label">Monitoring</span><strong id="st-monitor">–</strong></div>
-<div><span class="label">Browser</span><strong id="st-browser">–</strong></div>
-<div><span class="label">LinkedIn session</span><strong id="st-auth">–</strong></div>
-<div><span class="label">AI service</span><strong id="st-ai">–</strong></div>
-<div><span class="label">Last successful poll</span><strong id="st-last">–</strong></div>
-<div><span class="label">Next poll</span><strong id="st-next">–</strong></div>
+<div><span class="label">Monitoring</span><span class="hint">Whether the feed poller is running or paused.</span><strong id="st-monitor">–</strong></div>
+<div><span class="label">Browser</span><span class="hint">State of the automated Chromium window.</span><strong id="st-browser">–</strong></div>
+<div><span class="label">LinkedIn session</span><span class="hint">Whether the saved login is still valid.</span><strong id="st-auth">–</strong></div>
+<div><span class="label">AI service</span><span class="hint">Whether Ollama and the model are reachable.</span><strong id="st-ai">–</strong></div>
+<div><span class="label">Last successful poll</span><span class="hint">When the feed was last read without errors.</span><strong id="st-last">–</strong></div>
+<div><span class="label">Next poll</span><span class="hint">When the feed will be checked next.</span><strong id="st-next">–</strong></div>
 </div>
 <p id="st-msg" class="muted"></p>
 <div class="actions">
@@ -19,13 +20,13 @@
 </div>
 </section>
 <section class="cards">
-<div class="card"><span class="label">Posts discovered</span><strong data-stat="posts_total">0</strong></div>
-<div class="card"><span class="label">Awaiting AI</span><strong data-stat="pending_ai">0</strong></div>
-<div class="card"><span class="label">Drafts</span><strong data-stat="drafts">0</strong></div>
-<div class="card"><span class="label">Comments published</span><strong data-stat="comments_published">0</strong></div>
-<div class="card"><span class="label">Posts liked</span><strong data-stat="liked">0</strong></div>
-<div class="card"><span class="label">Skipped</span><strong data-stat="skipped">0</strong></div>
-<div class="card"><span class="label">Failed / retrying</span><strong data-stat="failed_or_retrying">0</strong></div>
-<div class="card"><span class="label">Need verification</span><strong data-stat="verification_required">0</strong></div>
+<div class="card"><span class="label">Posts discovered</span><span class="hint">Total posts stored from your feed.</span><strong data-stat="posts_total">0</strong></div>
+<div class="card"><span class="label">Awaiting AI</span><span class="hint">Posts still waiting for a comment draft.</span><strong data-stat="pending_ai">0</strong></div>
+<div class="card"><span class="label">Drafts</span><span class="hint">Comments written but not yet published.</span><strong data-stat="drafts">0</strong></div>
+<div class="card"><span class="label">Comments published</span><span class="hint">Comments successfully posted to LinkedIn.</span><strong data-stat="comments_published">0</strong></div>
+<div class="card"><span class="label">Posts liked</span><span class="hint">Posts liked by the assistant or by you.</span><strong data-stat="liked">0</strong></div>
+<div class="card"><span class="label">Skipped</span><span class="hint">Posts excluded from automation.</span><strong data-stat="skipped">0</strong></div>
+<div class="card"><span class="label">Failed / retrying</span><span class="hint">Jobs that failed or are waiting to retry.</span><strong data-stat="failed_or_retrying">0</strong></div>
+<div class="card"><span class="label">Need verification</span><span class="hint">Actions whose result must be checked manually.</span><strong data-stat="verification_required">0</strong></div>
 </section>
 {% endblock %}

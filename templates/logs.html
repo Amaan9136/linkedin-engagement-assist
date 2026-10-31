@@ -1,18 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="panel">
+<h2>Logs</h2>
+<p class="hint">Recent activity, warnings and errors from the assistant, newest first.</p>
 <div class="toolbar">
 <select id="log-level">
-<option value="">All levels</option>
-<option value="INFO">Info and above</option>
-<option value="WARNING">Warnings and above</option>
-<option value="ERROR">Errors</option>
+<option value="" data-hint="Show every entry.">All levels</option>
+<option value="INFO" data-hint="Normal activity, warnings and errors.">Info and above</option>
+<option value="WARNING" data-hint="Warnings and errors only.">Warnings and above</option>
+<option value="ERROR" data-hint="Errors only.">Errors</option>
 </select>
 <input id="log-component" placeholder="Component (e.g. worker)">
 <input id="log-post" type="number" min="1" placeholder="Post ID">
 <button class="btn" id="log-refresh">Refresh</button>
 <button class="btn btn-danger" id="log-clear">Clear logs</button>
 </div>
+<p id="log-hint" class="hint"></p>
 <div class="table-wrap">
 <table class="logs"><thead><tr><th>Time</th><th>Level</th><th>Component</th><th>Post</th><th>Message</th></tr></thead><tbody id="log-body"></tbody></table>
 </div>
