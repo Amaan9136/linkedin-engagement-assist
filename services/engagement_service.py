@@ -9,27 +9,23 @@ def like_eligible(p, s):
         return False
     if p.get('skipped'):
         return False
-    hours = s['like_max_age_hours']
-    if hours and p.get('published_at'):
-        age = models.parse_iso(models.now_iso()) - models.parse_iso(p['published_at'])
-        if age.total_seconds() > hours * 3600:
-            return False
-    return True
+    return not models.too_old(p, s['like_max_age_hours'])
 def enqueue_for_new_post(pid, p, s):
     if models.queue_size() >= s['max_queue']:
         log.warning('Queue full; post %s will be queued later', pid, extra={'post_id': pid})
         return
-    if s['auto_ai']:
+    if s['auto_ai'] and (not models.too_old(p, s['comment_max_age_hours'])):
         models.enqueue_job(pid, 'ai')
     if like_eligible(p, s):
         models.update_post(pid, like_status='pending')
         models.enqueue_job(pid, 'like')
 def enqueue_orphans(s):
-    ai_rows = db.query("SELECT id FROM posts WHERE skipped=0 AND ai_status='pending' AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND j.kind='ai') ORDER BY discovered_at DESC LIMIT 50")
+    ai_rows = db.query("SELECT id, published_at FROM posts WHERE skipped=0 AND ai_status='pending' AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND j.kind='ai') ORDER BY discovered_at DESC LIMIT 50")
     for r in (ai_rows if s['auto_ai'] else []):
         if models.queue_size() >= s['max_queue']:
             return
-        models.enqueue_job(r['id'], 'ai')
+        if not models.too_old(dict(r), s['comment_max_age_hours']):
+            models.enqueue_job(r['id'], 'ai')
     like_rows = db.query("SELECT * FROM posts WHERE skipped=0 AND like_status='none' AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND j.kind='like') ORDER BY discovered_at DESC LIMIT 50")
     for r in like_rows:
         if models.queue_size() >= s['max_queue']:
@@ -139,6 +135,23 @@ def request_publish(pid, approve_only, s):
         return
     models.update_post(pid, comment_status='queued', last_error=None, retry_count=0, next_retry_at=None)
     models.enqueue_job(pid, 'comment')
+def confirm(pid):
+    post = _need(pid)
+    done = []
+    if post['comment_status'] == 'verification_required':
+        _mark_published(pid, final_comment_text(post), 'confirmed manually')
+        done.append('comment')
+    if post['like_status'] == 'verification_required':
+        models.update_post(pid, like_status='liked', liked_at=models.now_iso(), last_error=None, verification_status='confirmed')
+        models.add_action(pid, 'like', 'success', 'confirmed manually')
+        done.append('like')
+    if not done:
+        raise PermanentError('Nothing to confirm for this post')
+    for k in done:
+        db.execute("UPDATE jobs SET status='cancelled', updated_at=? WHERE post_id=? AND kind=? AND status='queued'", (models.now_iso(), pid, k))
+    return done
+def delete(pid):
+    models.delete_post(_need(pid))
 def skip(pid, reason='manual'):
     _need(pid)
     models.update_post(pid, skipped=1, skip_reason=reason)

@@ -8,12 +8,13 @@ bp = Blueprint('posts_api', __name__)
 def list_posts():
     flt = request.args.get('filter', 'all')
     q = request.args.get('q', '').strip()[:100]
+    sort = request.args.get('sort', 'recent')
     try:
         page = max(1, int(request.args.get('page', 1)))
         per = min(100, max(5, int(request.args.get('per_page', 25))))
     except ValueError:
         return fail('Invalid pagination')
-    rows, total = models.list_posts(flt, q, per, (page - 1) * per)
+    rows, total = models.list_posts(flt, q, per, (page - 1) * per, sort)
     return ok(posts=[models.post_to_dict(r) for r in rows], total=total, page=page, per_page=per)
 @bp.get('/api/posts/<int:pid>')
 @api
@@ -61,6 +62,10 @@ def reset(pid):
 @api
 def retry(pid):
     return ok(message='Retry queued: ' + ', '.join(eng.retry(pid)))
+@bp.post('/api/posts/<int:pid>/confirm')
+@api
+def confirm(pid):
+    return ok(message='Marked as done: ' + ', '.join(eng.confirm(pid)))
 @bp.post('/api/posts/bulk')
 @api
 def bulk():
@@ -70,7 +75,7 @@ def bulk():
     if not isinstance(ids, list) or not ids or len(ids) > 200 or (not all((isinstance(i, int) for i in ids))):
         return fail('Select between 1 and 200 posts')
     s = models.all_settings()
-    handlers = {'generate': eng.request_generate, 'like': eng.request_like, 'skip': eng.skip, 'reset': lambda i: eng.reset(i, s), 'retry': eng.retry}
+    handlers = {'generate': eng.request_generate, 'like': eng.request_like, 'skip': eng.skip, 'reset': lambda i: eng.reset(i, s), 'retry': eng.retry, 'delete': eng.delete}
     fn = handlers.get(action)
     if not fn:
         return fail('Unknown bulk action')

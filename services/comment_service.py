@@ -71,6 +71,6 @@ def run_ai_job(job, post, s):
     models.update_post(pid, **fields)
     models.add_action(pid, 'ai', 'done', 'draft generated')
     log.info('Draft generated', extra={'post_id': pid})
-    if editable and s['publishing_mode'] == 'automatic' and s['auto_comment']:
+    if editable and s['publishing_mode'] == 'automatic' and s['auto_comment'] and (not models.too_old(post, s['comment_max_age_hours'])):
         models.update_post(pid, comment_status='queued')
         models.enqueue_job(pid, 'comment')

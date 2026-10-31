@@ -22,6 +22,8 @@ def seed_settings(defaults):
     with db.tx() as c:
         for k, v in defaults.items():
             c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)', (k, json.dumps(v)))
+def too_old(p, hours):
+    return bool(hours and p.get('published_at') and (parse_iso(now_iso()) - parse_iso(p['published_at'])).total_seconds() > hours * 3600)
 def get_meta(key, default=None):
     r = db.query_one('SELECT value FROM meta WHERE key=?', (key,))
     return r['value'] if r else default
@@ -96,7 +98,8 @@ def _filter_clause(name):
     day_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
     table = {'all': ('1=1', ()), 'feed': ("skipped=0 AND (like_status!='liked' OR comment_status NOT IN ('published','publishing'))", ()), 'recent': ('discovered_at >= ?', (day_ago,)), 'older_unprocessed': ("discovered_at < ? AND skipped=0 AND ai_status IN ('pending','failed')", (day_ago,)), 'pending_ai': ("skipped=0 AND ai_status IN ('pending','generating')", ()), 'drafts': ("comment_status IN ('draft','approved')", ()), 'commented': ("comment_status='published'", ()), 'liked': ("like_status='liked'", ()), 'failed': ("(ai_status='failed' OR comment_status='failed' OR like_status='failed' OR EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND (j.status='failed' OR (j.status='queued' AND j.attempts>0))))", ()), 'skipped': ('skipped=1', ()), 'verification': ("comment_status='verification_required' OR like_status='verification_required'", ())}
     return table.get(name, table['all'])
-def list_posts(flt='all', q='', limit=25, offset=0):
+SORTS = {'recent': 'discovered_at DESC, id DESC', 'oldest': 'discovered_at ASC, id ASC', 'published_new': 'published_at DESC, id DESC', 'published_old': 'published_at ASC, id ASC', 'author': 'author_name COLLATE NOCASE ASC, id DESC'}
+def list_posts(flt='all', q='', limit=25, offset=0, sort='recent'):
     where, params = _filter_clause(flt)
     where = f'({where})'
     if q:
@@ -105,7 +108,7 @@ def list_posts(flt='all', q='', limit=25, offset=0):
         where += " AND (author_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR draft LIKE ? ESCAPE '\\')"
         params = (*params, like, like, like, like)
     total = db.query_one(f'SELECT COUNT(*) FROM posts WHERE {where}', params)[0]
-    rows = db.query(f'SELECT * FROM posts WHERE {where} ORDER BY discovered_at DESC, id DESC LIMIT ? OFFSET ?', (*params, limit, offset))
+    rows = db.query(f'SELECT * FROM posts WHERE {where} ORDER BY {SORTS.get(sort, SORTS["recent"])} LIMIT ? OFFSET ?', (*params, limit, offset))
     return ([dict(r) for r in rows], total)
 def stats():
     def n(sql):
@@ -113,6 +116,13 @@ def stats():
     return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")}
 def queue_size():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")[0]
+def ai_backlog():
+    return db.query_one("SELECT COUNT(*) FROM jobs WHERE kind='ai' AND status IN ('queued','running')")[0]
+def delete_post(p):
+    with db.tx() as c:
+        for t in ('jobs', 'actions'):
+            c.execute(f'DELETE FROM {t} WHERE post_id=?', (p['id'],))
+        c.execute('DELETE FROM posts WHERE id=?', (p['id'],))
 def enqueue_job(post_id, kind, delay=0, reset=True):
     now, nxt = (now_iso(), iso_in(delay))
     with db.tx() as c:

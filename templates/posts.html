@@ -18,6 +18,13 @@
 <option value="skipped" data-hint="Posts excluded from automation.">Skipped</option>
 <option value="verification" data-hint="Posts whose like or comment needs a manual check.">Verification required</option>
 </select>
+<select id="sort" title="Choose how the posts are ordered.">
+<option value="recent">Recently found</option>
+<option value="oldest">Oldest found</option>
+<option value="published_new">Newest published</option>
+<option value="published_old">Oldest published</option>
+<option value="author">Author A–Z</option>
+</select>
 <input id="search" type="search" placeholder="Search author, text, draft">
 <button class="btn" id="btn-refresh" title="Reload the post list.">Refresh</button>
 <button class="btn" id="btn-autoai" title="When on, the AI writes a draft for every new post. When off, you generate drafts yourself.">Auto AI drafts</button>
@@ -33,6 +40,7 @@
 <option value="retry" data-hint="Retry failed work on the selected posts.">Retry failed</option>
 <option value="skip" data-hint="Exclude the selected posts from automation.">Mark skipped</option>
 <option value="reset" data-hint="Put skipped posts back into automation.">Reset skip</option>
+<option value="delete" data-hint="Permanently remove the selected posts; they are cleared from the database and can be collected again from the feed.">Delete</option>
 <option value="open" data-hint="Open up to 10 selected posts on LinkedIn.">Open selected</option>
 </select>
 <button class="btn" id="bulk-run" title="Run the chosen bulk action on the selected posts.">Apply</button>

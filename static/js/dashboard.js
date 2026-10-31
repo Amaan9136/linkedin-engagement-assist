@@ -136,7 +136,7 @@ function initDashboard() {
     if (confirm('Restart the browser now?')) act(() => api('POST', '/api/browser/restart'));
   };
 }
-const state = {filter: 'all', q: '', page: 1, per: 25, total: 0, selected: new Set()};
+const state = {filter: 'all', sort: 'recent', q: '', page: 1, per: 25, total: 0, selected: new Set()};
 function badge(text, cls) {
   return h('span', {class: 'badge ' + (cls || '')}, text);
 }
@@ -161,6 +161,7 @@ function postCard(p) {
     p.comment && ['draft', 'approved', 'failed', 'none'].includes(p.comment_status) ? h('button', {class: 'btn btn-sm btn-primary', title: 'Queue this comment to be posted on LinkedIn.', onclick: () => { if (confirm('Publish this comment to LinkedIn?')) run('POST', '/publish')(); }}, 'Publish') : null,
     p.like_status !== 'liked' ? h('button', {class: 'btn btn-sm', title: 'Queue a like for this post.', onclick: run('POST', '/like')}, 'Like') : null,
     ['failed', 'verification_required'].includes(p.comment_status) || ['failed', 'verification_required'].includes(p.like_status) || p.ai_status === 'failed' ? h('button', {class: 'btn btn-sm', title: 'Retry the failed or unverified work now.', onclick: run('POST', '/retry')}, 'Retry') : null,
+    p.comment_status === 'verification_required' || p.like_status === 'verification_required' ? h('button', {class: 'btn btn-sm btn-primary', title: 'Confirm it went through on LinkedIn and mark it done.', onclick: () => { if (confirm('Was this really done on LinkedIn?')) run('POST', '/confirm')(); }}, 'Mark as done') : null,
     p.skipped ? h('button', {class: 'btn btn-sm', title: 'Put this post back into automation.', onclick: run('POST', '/reset')}, 'Reset skip') : h('button', {class: 'btn btn-sm btn-danger', title: 'Exclude this post from automation.', onclick: () => { if (confirm('Skip this post?')) run('POST', '/skip')(); }}, 'Skip')
   ];
   return h('div', {class: 'post'},
@@ -181,7 +182,7 @@ function postCard(p) {
 }
 async function loadPosts() {
   try {
-    const qs = new URLSearchParams({filter: state.filter, q: state.q, page: state.page, per_page: state.per});
+    const qs = new URLSearchParams({filter: state.filter, sort: state.sort, q: state.q, page: state.page, per_page: state.per});
     const d = await api('GET', '/api/posts?' + qs);
     state.total = d.total;
     const box = $('#posts');
@@ -238,6 +239,7 @@ function initPosts() {
   hint($('#filter'), $('#filter-hint'));
   hint($('#bulk-action'), $('#bulk-hint'));
   $('#filter').onchange = e => { state.filter = e.target.value; state.page = 1; loadPosts(); };
+  $('#sort').onchange = e => { state.sort = e.target.value; state.page = 1; loadPosts(); };
   let t;
   $('#search').oninput = e => { clearTimeout(t); t = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadPosts(); }, 300); };
   $('#btn-refresh').onclick = loadPosts;
@@ -262,6 +264,7 @@ function initPosts() {
       return;
     }
     if (action === 'skip' && !confirm('Skip ' + ids.length + ' post(s)?')) return;
+    if (action === 'delete' && !confirm('Permanently delete ' + ids.length + ' post(s)? They are cleared from the database.')) return;
     const d = await act(() => api('POST', '/api/posts/bulk', {action, ids}));
     if (d && d.errors && d.errors.length) toast(d.message + '. ' + d.errors[0], true);
     state.selected.clear();

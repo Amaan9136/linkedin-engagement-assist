@@ -1,12 +1,10 @@
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 import requests
 from .errors import PermanentError, ServiceUnavailable, TemporaryError
 log = logging.getLogger('linkedin.ollama')
-CLOUD = 'https://ollama.com'
 _usage = {'t': 0.0, 'v': None}
 def _base(endpoint):
     p = urlsplit(endpoint)
@@ -49,14 +47,11 @@ def check(s):
         return {'status': 'up', 'message': 'OK'}
     except Exception as e:
         return {'status': 'down', 'message': str(e)[:200]}
-def usage():
-    key = os.environ.get('OLLAMA_API_KEY', '').strip()
-    if not key:
-        return {'status': 'no_key', 'message': 'Set OLLAMA_API_KEY in .env to see Ollama cloud usage'}
+def usage(s):
     if _usage['v'] and time.time() - _usage['t'] < 60:
         return _usage['v']
     try:
-        rs = [requests.get(f'{CLOUD}/api/{p}', params=q, headers={'Authorization': 'Bearer ' + key}, timeout=8) for p, q in (('usage', {'range': '24h'}), ('usage', {'range': '30d'}), ('balance', None))]
+        rs = [requests.get(f'{_base(s["ollama_endpoint"])}/api/{p}', params=q, timeout=8) for p, q in (('usage', {'range': '24h'}), ('usage', {'range': '30d'}), ('balance', None))]
         bad = next((r for r in rs if r.status_code != 200), None)
         if bad is not None:
             v = {'status': 'error', 'message': f'Ollama cloud usage returned HTTP {bad.status_code}'}

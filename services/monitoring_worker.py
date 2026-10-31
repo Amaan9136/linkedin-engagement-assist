@@ -127,7 +127,7 @@ class MonitoringWorker:
         if scrolling and ready:
             self._safe(self._autoscroll, None, s)
         if not scrolling and not paused and now >= self.next_poll:
-            if ready:
+            if ready and (not (s['poll_backlog_limit'] and models.ai_backlog() > s['poll_backlog_limit'])):
                 self.next_poll = now + s['poll_interval']
                 runtime.set(next_poll_at=models.iso_in(s['poll_interval']))
                 self._safe(self._poll, None, s)
@@ -139,7 +139,7 @@ class MonitoringWorker:
         if time.time() >= self.next_ai_check:
             self.next_ai_check = time.time() + 30
             health_service.ai_health(s, force=True)
-            runtime.set(ai_usage=ollama_service.usage())
+            runtime.set(ai_usage=ollama_service.usage(s))
     def _maintenance(self):
         if time.time() >= self.next_prune:
             self.next_prune = time.time() + 3600
