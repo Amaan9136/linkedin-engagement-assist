@@ -264,7 +264,7 @@ function initPosts() {
       return;
     }
     if (action === 'skip' && !confirm('Skip ' + ids.length + ' post(s)?')) return;
-    if (action === 'delete' && !confirm('Permanently delete ' + ids.length + ' post(s)? They are cleared from the database.')) return;
+    if (action === 'delete' && !confirm('Permanently delete ' + ids.length + ' post(s)? They will not be collected again.')) return;
     const d = await act(() => api('POST', '/api/posts/bulk', {action, ids}));
     if (d && d.errors && d.errors.length) toast(d.message + '. ' + d.errors[0], true);
     state.selected.clear();

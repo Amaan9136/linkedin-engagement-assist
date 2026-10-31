@@ -59,6 +59,8 @@ def release_lease(owner):
 def upsert_post(p):
     now = now_iso()
     with db.tx() as c:
+        if c.execute('SELECT 1 FROM deleted_posts WHERE key IN (?,?,?)', (p.get('external_id'), p.get('alias'), p['url'])).fetchone():
+            return (None, False)
         row = None
         if p.get('external_id'):
             row = c.execute('SELECT id, ai_status FROM posts WHERE external_id=?', (p['external_id'],)).fetchone()
@@ -120,6 +122,7 @@ def ai_backlog():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE kind='ai' AND status IN ('queued','running')")[0]
 def delete_post(p):
     with db.tx() as c:
+        c.executemany('INSERT OR IGNORE INTO deleted_posts(key) VALUES(?)', [(k,) for k in (p['external_id'], p['url']) if k])
         for t in ('jobs', 'actions'):
             c.execute(f'DELETE FROM {t} WHERE post_id=?', (p['id'],))
         c.execute('DELETE FROM posts WHERE id=?', (p['id'],))
