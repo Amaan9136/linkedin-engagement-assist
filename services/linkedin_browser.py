@@ -1,6 +1,7 @@
 import logging
 import random
 import re
+import subprocess
 import sys
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, PermanentError, TemporaryError
 try:
@@ -72,6 +73,13 @@ class LinkedInBrowser:
     def _explain(e):
         msg = str(e)
         low = msg.lower()
+        if "no attribute '_playwright" in low:
+            try:
+                r = subprocess.run([sys.executable, '-m', 'playwright', '--version'], capture_output=True, text=True, timeout=30)
+                probe = ((r.stdout + r.stderr).strip().splitlines() or ['no output'])[-1]
+            except Exception as x:
+                probe = str(x)
+            return 'Playwright driver failed to start (driver check: ' + probe + '). Run: pip install --upgrade playwright greenlet && playwright install chromium'
         if "executable doesn't exist" in low or 'playwright install' in low:
             return 'Chromium is not installed. Run: playwright install chromium'
         if 'shared libraries' in low or 'missing dependencies' in low:

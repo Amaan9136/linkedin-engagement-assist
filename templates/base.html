@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf_token }}">
 <title>{% block title %}LinkedIn Engagement Assistant{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body data-page="{{ page }}" data-tz="{{ tz }}">
 <header class="topbar">
 <div class="brand">LinkedIn Engagement Assistant</div>
 <nav>
-<a href="/" target="_blank" rel="noopener" class="{{ 'active' if page == 'dashboard' }}">Dashboard</a>
-<a href="/posts" target="_blank" rel="noopener" class="{{ 'active' if page == 'posts' }}">Posts</a>
-<a href="/settings" target="_blank" rel="noopener" class="{{ 'active' if page == 'settings' }}">Settings</a>
-<a href="/logs" target="_blank" rel="noopener" class="{{ 'active' if page == 'logs' }}">Logs</a>
+<a href="/" class="{{ 'active' if page == 'dashboard' }}">Dashboard</a>
+<a href="/posts" class="{{ 'active' if page == 'posts' }}">Posts</a>
+<a href="/settings" class="{{ 'active' if page == 'settings' }}">Settings</a>
+<a href="/logs" class="{{ 'active' if page == 'logs' }}">Logs</a>
 </nav>
 <div class="right">
 <span id="health-pill" class="pill pill-warn">Checking…</span>
@@ -25,6 +25,6 @@
 {% block content %}{% endblock %}
 </main>
 <div id="toast" class="toast" hidden></div>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ asset('js/dashboard.js') }}"></script>
 </body>
 </html>

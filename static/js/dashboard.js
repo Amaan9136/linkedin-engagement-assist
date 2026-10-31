@@ -89,6 +89,7 @@ async function refreshStatus() {
     const pill = $('#health-pill');
     pill.textContent = text;
     pill.className = 'pill pill-' + cls;
+    try { sessionStorage.setItem('pill', JSON.stringify([text, cls])); } catch (e) {}
     if (page === 'dashboard') {
       document.querySelectorAll('[data-stat]').forEach(n => { n.textContent = d.stats[n.dataset.stat] ?? 0; });
       const s = d.status;
@@ -333,6 +334,10 @@ function initLogs() {
   loadLogs();
   setInterval(loadLogs, 15000);
 }
+try {
+  const c = JSON.parse(sessionStorage.getItem('pill'));
+  if (c) { $('#health-pill').textContent = c[0]; $('#health-pill').className = 'pill pill-' + c[1]; }
+} catch (e) {}
 refreshStatus();
 setInterval(refreshStatus, 8000);
 if (page === 'dashboard') initDashboard();

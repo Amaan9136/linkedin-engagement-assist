@@ -4,8 +4,9 @@ import secrets
 import signal
 import sys
 from datetime import timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
-from flask import Flask, abort, jsonify, request, session
+from flask import Flask, abort, jsonify, request, session, url_for
 import logging_setup
 from config import ConfigError, default_settings, load_config
 from database import db, migrations, models
@@ -42,9 +43,11 @@ def create_app():
         resp.headers['X-Content-Type-Options'] = 'nosniff'
         resp.headers['X-Frame-Options'] = 'DENY'
         resp.headers['Referrer-Policy'] = 'same-origin'
-        resp.headers['Cache-Control'] = 'no-store' if request.path.startswith('/api/') else resp.headers.get('Cache-Control', 'no-cache')
+        resp.headers['Cache-Control'] = 'no-store' if request.path.startswith('/api/') else 'public, max-age=31536000, immutable' if request.path.startswith('/static/') else 'private, no-cache'
         resp.headers['Content-Security-Policy'] = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         return resp
+    def asset(name):
+        return url_for('static', filename=name, v=int((Path(app.static_folder) / name).stat().st_mtime))
     @app.context_processor
     def inject():
         tz = 'UTC'
@@ -53,7 +56,7 @@ def create_app():
             ZoneInfo(tz)
         except Exception:
             tz = 'UTC'
-        return {'csrf_token': session.get('csrf', ''), 'tz': tz}
+        return {'csrf_token': session.get('csrf', ''), 'tz': tz, 'asset': asset}
     @app.errorhandler(404)
     def not_found(e):
         if request.path.startswith('/api/'):
