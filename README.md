@@ -186,7 +186,7 @@ Stop the app before restoring. The current database is saved to `backups/` befor
 | Posts found but no text | LinkedIn changed its page structure: update the selectors at the top of `services/linkedin_browser.py` and the script in `services/post_collector.py` |
 | "Another process holds the lease" | Another instance is running; stop it or wait about 90 seconds after a crash |
 
-Logs are in `logs/app.log` (rotating) and on the Logs page. Secrets are redacted.
+Logs are in `logs/app.log` (rotating) and on the Logs page. Secrets are redacted. Use **Clear logs** on the Logs page to delete the entries and empty the log files.
 
 ## Project structure
 ```

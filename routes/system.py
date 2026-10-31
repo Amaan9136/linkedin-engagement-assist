@@ -1,3 +1,5 @@
+import logging
+from logging.handlers import RotatingFileHandler
 from flask import Blueprint, current_app, request
 from database import models
 from services import health_service
@@ -42,3 +44,20 @@ def logs():
     except ValueError:
         return fail('Invalid filter')
     return ok(events=models.list_events(level, component, pid, limit))
+@bp.post('/api/logs/clear')
+@api
+def clear_logs():
+    removed = models.clear_events()
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, RotatingFileHandler) and handler.stream:
+            handler.acquire()
+            try:
+                handler.flush()
+                handler.stream.seek(0)
+                handler.stream.truncate(0)
+            finally:
+                handler.release()
+    for old in current_app.extensions['cfg'].log_dir.glob('app.log.*'):
+        old.unlink(missing_ok=True)
+    logging.getLogger('linkedin.api').info('Logs cleared from the dashboard')
+    return ok(message=f'Cleared {removed} log entries')

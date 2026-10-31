@@ -172,3 +172,5 @@ def list_events(level=None, component=None, post_id=None, limit=200):
 def prune_events(days=30):
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(FMT)
     db.execute('DELETE FROM events WHERE ts < ?', (cutoff,))
+def clear_events():
+    return db.execute('DELETE FROM events').rowcount

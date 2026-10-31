@@ -316,6 +316,11 @@ async function loadLogs() {
 }
 function initLogs() {
   $('#log-refresh').onclick = loadLogs;
+  $('#log-clear').onclick = async () => {
+    if (!confirm('Delete all log entries and empty the log file?')) return;
+    await act(() => api('POST', '/api/logs/clear'));
+    loadLogs();
+  };
   ['#log-level'].forEach(s => { $(s).onchange = loadLogs; });
   loadLogs();
   setInterval(loadLogs, 15000);
