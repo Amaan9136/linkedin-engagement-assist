@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 from . import text_extractor as tx
 log = logging.getLogger('linkedin.collector')
 EXTRACT_JS = r'''() => {
-  const txt = n => n ? (n.innerText || n.textContent || '').trim() : '';
+  const raw = n => (n.innerText || n.textContent || '').trim();
+  const txt = n => { if (!n) return ''; const t = raw(n); const b = n.querySelector && n.querySelector("[data-testid='expandable-text-button']"); const k = b ? raw(b) : ''; return k && t.endsWith(k) ? t.slice(0, -k.length).trim() : t; };
   const pick = (el, sels) => { for (const s of sels) { const n = el.querySelector(s); if (n && txt(n)) return n; } return null; };
   const ID = /(activity|share|ugcPost)[-:](\d{10,})/;
   const LEG = /^urn:li:(activity|share|ugcPost):\d+/;

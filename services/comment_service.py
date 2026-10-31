@@ -43,6 +43,9 @@ def run_ai_job(job, post, s):
         return
     if s['ai_hourly_limit'] and db.query_one("SELECT COUNT(*) AS n FROM actions WHERE kind='ai' AND status='done' AND created_at>?", (models.iso_in(-3600),))['n'] >= s['ai_hourly_limit']:
         raise Deferred(300, 'hourly AI limit reached')
+    left = ollama_service.exhausted()
+    if left:
+        raise Deferred(left, 'Ollama usage limit reached')
     wait = models.reserve_slot('last_ai_at', s['ai_gap'])
     if wait > 0:
         raise Deferred(wait, 'AI pacing')

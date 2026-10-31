@@ -98,6 +98,13 @@ async function refreshStatus() {
       $('#st-auth').textContent = s.auth_status;
       $('#st-ai').textContent = s.ai_status;
       $('#st-last').textContent = fmt(s.last_poll_ok);
+      const u = s.ai_usage || {};
+      const uok = u.status === 'ok';
+      $('#u-24h').textContent = uok ? u.tokens_24h.toLocaleString() : '–';
+      $('#u-30d').textContent = uok ? u.tokens_30d.toLocaleString() : '–';
+      $('#u-left').textContent = !uok ? '–' : u.session_left != null ? Math.round(u.session_left) + '% session · ' + Math.round(u.weekly_left) + '% week' : u.left_usd != null ? '$' + u.left_usd.toFixed(2) + ' of $' + u.allowance_usd.toFixed(2) : '–';
+      $('#u-reset').textContent = uok ? fmt(u.session_resets || u.until) : '–';
+      $('#u-msg').textContent = uok ? '' : u.message || 'Waiting for usage data';
       $('#st-next').textContent = d.config.monitoring_enabled ? fmt(s.next_poll_at) : 'paused';
       const msgs = [s.browser_error, s.auth_status !== 'ok' ? s.auth_message : '', s.ai_status !== 'up' ? s.ai_message : '', s.last_error].filter(Boolean);
       $('#st-msg').textContent = msgs.join(' · ');
@@ -147,14 +154,14 @@ function postCard(p) {
     loadPosts();
   };
   const btns = [
-    h('a', {class: 'btn btn-sm', href: p.url, target: '_blank', rel: 'noopener noreferrer'}, 'Open post'),
-    h('button', {class: 'btn btn-sm', onclick: () => openDetail(p.id)}, 'Details / edit'),
-    h('button', {class: 'btn btn-sm', onclick: run('POST', '/generate')}, p.draft ? 'Regenerate' : 'Generate'),
-    p.comment && ['draft', 'approved', 'failed', 'none'].includes(p.comment_status) ? h('button', {class: 'btn btn-sm', onclick: run('POST', '/approve')}, 'Approve') : null,
-    p.comment && ['draft', 'approved', 'failed', 'none'].includes(p.comment_status) ? h('button', {class: 'btn btn-sm btn-primary', onclick: () => { if (confirm('Publish this comment to LinkedIn?')) run('POST', '/publish')(); }}, 'Publish') : null,
-    p.like_status !== 'liked' ? h('button', {class: 'btn btn-sm', onclick: run('POST', '/like')}, 'Like') : null,
-    ['failed', 'verification_required'].includes(p.comment_status) || ['failed', 'verification_required'].includes(p.like_status) || p.ai_status === 'failed' ? h('button', {class: 'btn btn-sm', onclick: run('POST', '/retry')}, 'Retry') : null,
-    p.skipped ? h('button', {class: 'btn btn-sm', onclick: run('POST', '/reset')}, 'Reset skip') : h('button', {class: 'btn btn-sm btn-danger', onclick: () => { if (confirm('Skip this post?')) run('POST', '/skip')(); }}, 'Skip')
+    h('a', {class: 'btn btn-sm', href: p.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open this post on LinkedIn.'}, 'Open post'),
+    h('button', {class: 'btn btn-sm', title: 'See the full post and edit the comment.', onclick: () => openDetail(p.id)}, 'Details / edit'),
+    h('button', {class: 'btn btn-sm', title: 'Ask the AI to write a comment draft.', onclick: run('POST', '/generate')}, p.draft ? 'Regenerate' : 'Generate'),
+    p.comment && ['draft', 'approved', 'failed', 'none'].includes(p.comment_status) ? h('button', {class: 'btn btn-sm', title: 'Approve this comment without publishing it.', onclick: run('POST', '/approve')}, 'Approve') : null,
+    p.comment && ['draft', 'approved', 'failed', 'none'].includes(p.comment_status) ? h('button', {class: 'btn btn-sm btn-primary', title: 'Queue this comment to be posted on LinkedIn.', onclick: () => { if (confirm('Publish this comment to LinkedIn?')) run('POST', '/publish')(); }}, 'Publish') : null,
+    p.like_status !== 'liked' ? h('button', {class: 'btn btn-sm', title: 'Queue a like for this post.', onclick: run('POST', '/like')}, 'Like') : null,
+    ['failed', 'verification_required'].includes(p.comment_status) || ['failed', 'verification_required'].includes(p.like_status) || p.ai_status === 'failed' ? h('button', {class: 'btn btn-sm', title: 'Retry the failed or unverified work now.', onclick: run('POST', '/retry')}, 'Retry') : null,
+    p.skipped ? h('button', {class: 'btn btn-sm', title: 'Put this post back into automation.', onclick: run('POST', '/reset')}, 'Reset skip') : h('button', {class: 'btn btn-sm btn-danger', title: 'Exclude this post from automation.', onclick: () => { if (confirm('Skip this post?')) run('POST', '/skip')(); }}, 'Skip')
   ];
   return h('div', {class: 'post'},
     chk,
@@ -219,8 +226,8 @@ async function openDetail(id) {
     h('p', {}, h('strong', {}, 'Comment')),
     ta,
     h('div', {class: 'row-actions'},
-      editable ? h('button', {class: 'btn btn-primary btn-sm', onclick: save}, 'Save edit') : null,
-      h('button', {class: 'btn btn-sm', onclick: close}, 'Close')),
+      editable ? h('button', {class: 'btn btn-primary btn-sm', title: 'Save your edited comment.', onclick: save}, 'Save edit') : null,
+      h('button', {class: 'btn btn-sm', title: 'Close this window.', onclick: close}, 'Close')),
     h('p', {}, h('strong', {}, 'Processing history')),
     h('ul', {class: 'history'},
       d.actions.map(a => h('li', {}, fmt(a.created_at) + ' · ' + a.kind + ' · ' + a.status + (a.detail ? ' · ' + a.detail : ''))),

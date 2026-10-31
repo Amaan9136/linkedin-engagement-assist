@@ -73,6 +73,7 @@ def run_comment(job, post, browser, s):
             models.update_post(pid, comment_status='verification_required', last_error='Could not verify whether the comment was posted; check the post manually')
             raise TemporaryError('Verification inconclusive')
         models.update_post(pid, verification_status='confirmed_absent')
+    prev = models.get_meta('last_comment_at', '0')
     wait = models.reserve_slot('last_comment_at', s['comment_cooldown'])
     if wait > 0:
         raise Deferred(wait, 'global comment cooldown')
@@ -85,6 +86,7 @@ def run_comment(job, post, browser, s):
         log.warning('Comment outcome uncertain: %s', e, extra={'post_id': pid})
         return
     except BaseException:
+        models.set_meta('last_comment_at', prev)
         models.update_post(pid, comment_status='queued')
         raise
     _mark_published(pid, text, 'published')
@@ -101,6 +103,8 @@ def request_generate(pid):
     post = _need(pid)
     if post['comment_status'] in ('published', 'queued', 'publishing', 'verification_required'):
         raise PermanentError('Cannot regenerate while a comment is queued, published or awaiting verification')
+    if db.query_one("SELECT 1 FROM jobs WHERE post_id=? AND kind='ai' AND status IN ('queued','running')", (pid,)):
+        raise PermanentError('A draft for this post is already queued')
     models.update_post(pid, skipped=0, skip_reason=None, ai_status='pending', last_error=None, retry_count=0, next_retry_at=None)
     models.enqueue_job(pid, 'ai')
 def request_like(pid):

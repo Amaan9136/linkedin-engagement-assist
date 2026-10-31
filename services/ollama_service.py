@@ -1,8 +1,13 @@
 import logging
+import os
+import time
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 import requests
 from .errors import PermanentError, ServiceUnavailable, TemporaryError
 log = logging.getLogger('linkedin.ollama')
+CLOUD = 'https://ollama.com'
+_usage = {'t': 0.0, 'v': None}
 def _base(endpoint):
     p = urlsplit(endpoint)
     return f'{p.scheme}://{p.netloc}'
@@ -44,3 +49,30 @@ def check(s):
         return {'status': 'up', 'message': 'OK'}
     except Exception as e:
         return {'status': 'down', 'message': str(e)[:200]}
+def usage():
+    key = os.environ.get('OLLAMA_API_KEY', '').strip()
+    if not key:
+        return {'status': 'no_key', 'message': 'Set OLLAMA_API_KEY in .env to see Ollama cloud usage'}
+    if _usage['v'] and time.time() - _usage['t'] < 60:
+        return _usage['v']
+    try:
+        rs = [requests.get(f'{CLOUD}/api/{p}', params=q, headers={'Authorization': 'Bearer ' + key}, timeout=8) for p, q in (('usage', {'range': '24h'}), ('usage', {'range': '30d'}), ('balance', None))]
+        bad = next((r for r in rs if r.status_code != 200), None)
+        if bad is not None:
+            v = {'status': 'error', 'message': f'Ollama cloud usage returned HTTP {bad.status_code}'}
+        else:
+            d, m, b = (r.json() for r in rs)
+            inc = b.get('included') or {}
+            ses, wk = (inc.get('session') or {}, inc.get('weekly') or {})
+            tok = lambda x: (x.get('totals') or {}).get('input_tokens', 0) + (x.get('totals') or {}).get('output_tokens', 0)
+            v = {'status': 'ok', 'tokens_24h': tok(d), 'tokens_30d': tok(m), 'requests_24h': (d.get('totals') or {}).get('request_count', 0), 'purchased_usd': (b.get('purchased') or {}).get('balance_usd'), 'session_left': ses.get('remaining_percent'), 'session_resets': ses.get('resets_at'), 'weekly_left': wk.get('remaining_percent'), 'weekly_resets': wk.get('resets_at'), 'left_usd': inc.get('balance_usd'), 'allowance_usd': inc.get('allowance_usd'), 'until': (inc.get('period') or {}).get('until')}
+    except Exception as e:
+        v = {'status': 'error', 'message': str(e)[:200]}
+    _usage.update(t=time.time(), v=v)
+    return v
+def exhausted():
+    v = _usage['v'] or {}
+    hit = [v[k + '_resets'] for k in ('session', 'weekly') if v.get(k + '_left') is not None and v[k + '_left'] <= 5 and v.get(k + '_resets')]
+    if v.get('allowance_usd') and v.get('left_usd') is not None and v['left_usd'] <= 0 and (not v.get('purchased_usd')) and v.get('until'):
+        hit.append(v['until'])
+    return min(3600, max(60, max((int((datetime.fromisoformat(t.replace('Z', '+00:00')) - datetime.now(timezone.utc)).total_seconds()) for t in hit)))) if hit else 0

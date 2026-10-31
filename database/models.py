@@ -2,6 +2,7 @@ import json
 import math
 import time
 from datetime import datetime, timedelta, timezone
+from services.text_extractor import words
 from . import db
 FMT = '%Y-%m-%dT%H:%M:%SZ'
 def now_iso():
@@ -67,7 +68,7 @@ def upsert_post(p):
             row = c.execute('SELECT id, ai_status FROM posts WHERE url=?', (p['url'],)).fetchone()
         if row:
             if row['ai_status'] == 'pending':
-                c.execute("UPDATE posts SET last_checked_at=?,\n                    body=COALESCE(NULLIF(?,''),body), title=COALESCE(NULLIF(?,''),title),\n                    alt_text=COALESCE(NULLIF(?,''),alt_text), extra_text=COALESCE(NULLIF(?,''),extra_text),\n                    external_id=COALESCE(external_id,?) WHERE id=?", (now, p.get('body') or '', p.get('title') or '', p.get('alt_text') or '', p.get('extra_text') or '', p.get('external_id'), row['id']))
+                c.execute("UPDATE posts SET last_checked_at=?,\n                    body=CASE WHEN LENGTH(?)>LENGTH(COALESCE(body,'')) THEN ? ELSE body END, title=COALESCE(NULLIF(?,''),title),\n                    alt_text=COALESCE(NULLIF(?,''),alt_text), extra_text=COALESCE(NULLIF(?,''),extra_text),\n                    external_id=COALESCE(external_id,?) WHERE id=?", (now, p.get('body') or '', p.get('body') or '', p.get('title') or '', p.get('alt_text') or '', p.get('extra_text') or '', p.get('external_id'), row['id']))
             else:
                 c.execute('UPDATE posts SET last_checked_at=? WHERE id=?', (now, row['id']))
             return (row['id'], False)
@@ -87,13 +88,13 @@ def update_post(pid, **fields):
 def effective_comment(p):
     return (p.get('edited_comment') or p.get('draft') or '').strip()
 def post_to_dict(p, detail=False):
-    d = {'id': p['id'], 'external_id': p['external_id'], 'url': p['url'], 'author_name': p['author_name'], 'author_url': p['author_url'], 'title': p['title'], 'preview': (p['title'] or '')[:160] if not p['body'] else p['body'][:260], 'published_at': p['published_at'], 'discovered_at': p['discovered_at'], 'last_checked_at': p['last_checked_at'], 'ai_status': p['ai_status'], 'draft': p['draft'], 'edited_comment': p['edited_comment'], 'comment': effective_comment(p), 'comment_status': p['comment_status'], 'like_status': p['like_status'], 'skipped': bool(p['skipped']), 'skip_reason': p['skip_reason'], 'retry_count': p['retry_count'], 'next_retry_at': p['next_retry_at'], 'last_error': p['last_error'], 'verification_status': p['verification_status']}
+    d = {'id': p['id'], 'external_id': p['external_id'], 'url': p['url'], 'author_name': p['author_name'], 'author_url': p['author_url'], 'title': p['title'], 'preview': (p['title'] or '')[:160] if not p['body'] else words(p['body']), 'published_at': p['published_at'], 'discovered_at': p['discovered_at'], 'last_checked_at': p['last_checked_at'], 'ai_status': p['ai_status'], 'draft': p['draft'], 'edited_comment': p['edited_comment'], 'comment': effective_comment(p), 'comment_status': p['comment_status'], 'like_status': p['like_status'], 'skipped': bool(p['skipped']), 'skip_reason': p['skip_reason'], 'retry_count': p['retry_count'], 'next_retry_at': p['next_retry_at'], 'last_error': p['last_error'], 'verification_status': p['verification_status']}
     if detail:
         d.update(body=p['body'], alt_text=p['alt_text'], extra_text=p['extra_text'], published_comment=p['published_comment'], comment_published_at=p['comment_published_at'], liked_at=p['liked_at'], comment_attempts=p['comment_attempts'])
     return d
 def _filter_clause(name):
     day_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
-    table = {'all': ('1=1', ()), 'feed': ("skipped=0 AND (like_status!='liked' OR comment_status NOT IN ('published','publishing'))", ()), 'recent': ('discovered_at >= ?', (day_ago,)), 'older_unprocessed': ("discovered_at < ? AND skipped=0 AND ai_status IN ('pending','failed')", (day_ago,)), 'pending_ai': ("skipped=0 AND ai_status IN ('pending','generating')", ()), 'drafts': ("comment_status IN ('draft','approved')", ()), 'awaiting_approval': ("comment_status='draft'", ()), 'commented': ("comment_status='published'", ()), 'liked': ("like_status='liked'", ()), 'failed': ("(ai_status='failed' OR comment_status='failed' OR like_status='failed' OR EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND (j.status='failed' OR (j.status='queued' AND j.attempts>0))))", ()), 'skipped': ('skipped=1', ()), 'verification': ("comment_status='verification_required' OR like_status='verification_required'", ())}
+    table = {'all': ('1=1', ()), 'feed': ("skipped=0 AND (like_status!='liked' OR comment_status NOT IN ('published','publishing'))", ()), 'recent': ('discovered_at >= ?', (day_ago,)), 'older_unprocessed': ("discovered_at < ? AND skipped=0 AND ai_status IN ('pending','failed')", (day_ago,)), 'pending_ai': ("skipped=0 AND ai_status IN ('pending','generating')", ()), 'drafts': ("comment_status IN ('draft','approved')", ()), 'commented': ("comment_status='published'", ()), 'liked': ("like_status='liked'", ()), 'failed': ("(ai_status='failed' OR comment_status='failed' OR like_status='failed' OR EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND (j.status='failed' OR (j.status='queued' AND j.attempts>0))))", ()), 'skipped': ('skipped=1', ()), 'verification': ("comment_status='verification_required' OR like_status='verification_required'", ())}
     return table.get(name, table['all'])
 def list_posts(flt='all', q='', limit=25, offset=0):
     where, params = _filter_clause(flt)
@@ -115,7 +116,7 @@ def queue_size():
 def enqueue_job(post_id, kind, delay=0, reset=True):
     now, nxt = (now_iso(), iso_in(delay))
     with db.tx() as c:
-        c.execute("INSERT INTO jobs(post_id,kind,status,attempts,next_run_at,created_at,updated_at)\n               VALUES(?,?,'queued',0,?,?,?)\n               ON CONFLICT(post_id,kind) DO UPDATE SET status='queued',\n                 attempts=CASE WHEN ? THEN 0 ELSE attempts END,\n                 next_run_at=excluded.next_run_at, last_error=NULL, updated_at=excluded.updated_at\n               WHERE jobs.status!='running'", (post_id, kind, nxt, now, now, 1 if reset else 0))
+        c.execute("INSERT INTO jobs(post_id,kind,status,attempts,next_run_at,created_at,updated_at)\n               VALUES(?,?,'queued',0,?,?,?)\n               ON CONFLICT(post_id,kind) DO UPDATE SET status='queued',\n                 attempts=CASE WHEN ? THEN 0 ELSE attempts END,\n                 next_run_at=excluded.next_run_at, last_error=NULL, updated_at=excluded.updated_at\n               WHERE jobs.status!='running' AND (jobs.kind!='ai' OR jobs.status!='queued')", (post_id, kind, nxt, now, now, 1 if reset else 0))
 def claim_due_jobs(limit, kinds):
     if not kinds:
         return []

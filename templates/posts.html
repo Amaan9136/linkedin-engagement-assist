@@ -11,8 +11,7 @@
 <option value="recent" data-hint="Posts discovered in the last 24 hours.">Recent (24h)</option>
 <option value="older_unprocessed" data-hint="Older posts that never got a draft.">Older unprocessed</option>
 <option value="pending_ai" data-hint="Posts waiting for or getting an AI draft.">Pending AI</option>
-<option value="drafts" data-hint="Posts with a comment draft ready.">Drafts ready</option>
-<option value="awaiting_approval" data-hint="Drafts you have not approved yet.">Awaiting approval</option>
+<option value="drafts" data-hint="Comments written but not yet published, whether approved or not.">Drafts</option>
 <option value="commented" data-hint="Posts where your comment is published.">Commented</option>
 <option value="liked" data-hint="Posts that are liked.">Liked</option>
 <option value="failed" data-hint="Posts with failed or retrying work.">Failed / retrying</option>
@@ -20,7 +19,7 @@
 <option value="verification" data-hint="Posts whose like or comment needs a manual check.">Verification required</option>
 </select>
 <input id="search" type="search" placeholder="Search author, text, draft">
-<button class="btn" id="btn-refresh">Refresh</button>
+<button class="btn" id="btn-refresh" title="Reload the post list.">Refresh</button>
 <button class="btn" id="btn-autoai" title="When on, the AI writes a draft for every new post. When off, you generate drafts yourself.">Auto AI drafts</button>
 <button class="btn" id="btn-autoscroll" title="Scrolls your LinkedIn feed for 3 minutes to collect more posts. Click again to stop.">Auto scroll</button>
 </div>
@@ -36,12 +35,12 @@
 <option value="reset" data-hint="Put skipped posts back into automation.">Reset skip</option>
 <option value="open" data-hint="Open up to 10 selected posts on LinkedIn.">Open selected</option>
 </select>
-<button class="btn" id="bulk-run">Apply</button>
+<button class="btn" id="bulk-run" title="Run the chosen bulk action on the selected posts.">Apply</button>
 <span id="count" class="muted"></span>
 </div>
 <p id="bulk-hint" class="hint"></p>
 </section>
 <div id="posts"></div>
-<div class="pager"><button class="btn" id="prev">Previous</button><span id="page-info" class="muted"></span><button class="btn" id="next">Next</button></div>
+<div class="pager"><button class="btn" id="prev" title="Go to the previous page.">Previous</button><span id="page-info" class="muted"></span><button class="btn" id="next" title="Go to the next page.">Next</button></div>
 <dialog id="detail"></dialog>
 {% endblock %}

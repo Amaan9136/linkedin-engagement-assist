@@ -21,8 +21,8 @@ SEL_UPDATE = "div.feed-shared-update-v2, div[data-urn^='urn:li:activity'], div[r
 SEL_ANY_LIKE = "button[aria-label*='like' i], button[aria-label^='Reaction button state']"
 SEL_LIKE = ["button[aria-label^='Reaction button state']", 'button.react-button__trigger', "button[aria-label^='React Like']", "button[aria-label^='Like']", SEL_ANY_LIKE]
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
-SEL_EDITOR = ['.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
-SEL_SUBMIT = ['button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
+SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
+SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
 def _norm(s):
     return re.sub('\\s+', ' ', s or '').strip().lower()
@@ -193,11 +193,12 @@ class LinkedInBrowser:
         return None
     def _copy_link(self, page, card):
         try:
-            page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first.locator("button[aria-label^='Open control menu for post by']").first.click(timeout=4000)
+            page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first.locator("[aria-label='Send']").first.click(timeout=4000)
             page.get_by_text(re.compile('copy link to post', re.I)).first.click(timeout=4000)
             page.wait_for_timeout(500)
             m = re.search(r'(activity|share|ugcPost)[-:](\d{10,})', page.evaluate('navigator.clipboard.readText()') or '')
             self._link_fail = 0 if m else self._link_fail + 1
+            page.keyboard.press('Escape')
             self.pause(page, 600, 1200)
             return f'urn:li:{m.group(1)}:{m.group(2)}' if m else None
         except (PWError, PWTimeout):
@@ -206,7 +207,7 @@ class LinkedInBrowser:
                 self.snapshot(page, 'menu_debug.html', 'Copy link menu not found')
             page.keyboard.press('Escape')
             return None
-    def resolve_links(self, page, items, limit=2):
+    def resolve_links(self, page, items, limit=4):
         for it in items:
             card = it.get('card')
             if not card:
@@ -231,7 +232,11 @@ class LinkedInBrowser:
         return next((c.first for c in cands if c.count()), None)
     def _open_post(self, url, post=None):
         self._card = None
-        if '?card=' in url:
+        m = re.search('[?&]card=([\\w-]+)', url)
+        if m and m.group(1) in self._links:
+            url = f'https://www.linkedin.com/feed/update/{self._links[m.group(1)]}/'
+            m = None
+        if m:
             page = self._get_page()
             for attempt in range(2):
                 if attempt or page.url.split('?')[0].rstrip('/') != FEED_URL.rstrip('/'):
@@ -252,6 +257,10 @@ class LinkedInBrowser:
                 self.snapshot(page, 'post_debug.html', 'Post not found')
                 raise TemporaryError('Post not found in the feed (it may have moved or been removed)')
             card.scroll_into_view_if_needed()
+            urn = self._copy_link(page, m.group(1))
+            if urn:
+                self._links[m.group(1)] = urn
+                return self._open_post(f'https://www.linkedin.com/feed/update/{urn}/', post)
             self._card = card
             self.pause(page)
             return page
@@ -325,8 +334,12 @@ class LinkedInBrowser:
                     raise TemporaryError('Comment box not found')
             editor.click()
             page.keyboard.insert_text(text)
-            page.wait_for_timeout(900)
-            submit = self._first_visible(update, SEL_SUBMIT)
+            submit = None
+            for _ in range(8):
+                page.wait_for_timeout(400)
+                submit = self._first_visible(update, SEL_SUBMIT) or self._first_visible(page, SEL_SUBMIT)
+                if submit is not None:
+                    break
             if submit is None:
                 self.snapshot(page, 'action_debug.html', 'Comment submit button not found')
                 raise TemporaryError('Comment submit button not found')

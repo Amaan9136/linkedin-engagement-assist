@@ -35,6 +35,8 @@ def meaningful_body(body):
     if len(stripped) < 25 or len(stripped.split()) < 4:
         return ''
     return b
+def words(s, n=500):
+    return re.match('(?:\\s*\\S+){0,%d}' % n, s).group(0).strip()
 def build_context(post):
     author = clean_text(post.get('author_name'))
     title = clean_text(post.get('title'))
@@ -47,7 +49,7 @@ def build_context(post):
     if body:
         if title:
             lines.append(f'Title: {title}')
-        lines.append('Post text:\n' + body[:3000])
+        lines.append('Post text:\n' + words(body))
         if alt:
             lines.append('Image descriptions (alt text): ' + alt[:600])
         if extra:

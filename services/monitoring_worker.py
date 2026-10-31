@@ -4,7 +4,7 @@ import time
 import uuid
 import logging_setup
 from database import models
-from . import comment_service, engagement_service, health_service, post_collector, retry_service
+from . import comment_service, engagement_service, health_service, ollama_service, post_collector, retry_service
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, PermanentError, ServiceUnavailable, TemporaryError
 from .linkedin_browser import FEED_URL, LinkedInBrowser
 log = logging.getLogger('linkedin.worker')
@@ -139,6 +139,7 @@ class MonitoringWorker:
         if time.time() >= self.next_ai_check:
             self.next_ai_check = time.time() + 30
             health_service.ai_health(s, force=True)
+            runtime.set(ai_usage=ollama_service.usage())
     def _maintenance(self):
         if time.time() >= self.next_prune:
             self.next_prune = time.time() + 3600
