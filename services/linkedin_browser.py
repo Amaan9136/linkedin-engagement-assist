@@ -362,9 +362,9 @@ class LinkedInBrowser:
             for i in range(n):
                 if snippet in _norm(loc.nth(i).inner_text()):
                     return True
+            return snippet in _norm(page.inner_text('body')) and not any(snippet in _norm(e.inner_text()) for e in page.locator(SEL_EDITOR[-1]).all())
         except (PWError, PWTimeout):
             return False
-        return False
     def post_comment(self, url, text, post=None):
         page = self._open_post(url, post)
         update = self._scope(page)
@@ -402,9 +402,10 @@ class LinkedInBrowser:
             raise TemporaryError('Could not prepare the comment: ' + str(e).splitlines()[0]) from e
         try:
             submit.click()
-            page.wait_for_timeout(2500)
-            if self._comment_visible(page, text):
-                return True
+            for _ in range(5):
+                page.wait_for_timeout(1500)
+                if self._comment_visible(page, text):
+                    return True
         except Exception as e:
             raise ActionUncertain('Submit was clicked but the result is unknown: ' + str(e).splitlines()[0]) from e
         raise ActionUncertain('Comment was submitted but could not be confirmed on the page')
