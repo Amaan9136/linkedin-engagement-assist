@@ -11,6 +11,10 @@ def index():
 @login_required
 def posts_page():
     return render_template('posts.html', page='posts')
+@bp.get('/queue')
+@login_required
+def queue_page():
+    return render_template('queue.html', page='queue')
 @bp.get('/settings')
 @login_required
 def settings_page():

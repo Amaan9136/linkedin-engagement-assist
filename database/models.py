@@ -192,3 +192,42 @@ def prune_events(days=30):
     db.execute('DELETE FROM events WHERE ts < ?', (cutoff,))
 def clear_events():
     return db.execute('DELETE FROM events').rowcount
+JOB_SORTS = {'next': 'jobs.next_run_at ASC, jobs.id ASC', 'newest': 'jobs.id DESC', 'oldest': 'jobs.id ASC', 'updated': 'jobs.updated_at DESC, jobs.id DESC', 'attempts': 'jobs.attempts DESC, jobs.id DESC', 'author': 'posts.author_name COLLATE NOCASE ASC, jobs.id DESC'}
+def list_jobs(status='active', kind='all', q='', limit=25, offset=0, sort='next'):
+    where, params = (['1=1'], [])
+    if status == 'active':
+        where.append("jobs.status IN ('queued','running')")
+    elif status != 'all':
+        where.append('jobs.status=?')
+        params.append(status)
+    if kind != 'all':
+        where.append('jobs.kind=?')
+        params.append(kind)
+    if q:
+        esc = q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        where.append("(posts.author_name LIKE ? ESCAPE '\\' OR posts.title LIKE ? ESCAPE '\\' OR posts.body LIKE ? ESCAPE '\\' OR jobs.last_error LIKE ? ESCAPE '\\')")
+        params += [f'%{esc}%'] * 4
+    clause = ' AND '.join(where)
+    total = db.query_one(f'SELECT COUNT(*) FROM jobs JOIN posts ON posts.id=jobs.post_id WHERE {clause}', params)[0]
+    rows = db.query(f"SELECT jobs.*, posts.author_name, posts.title, posts.url, SUBSTR(COALESCE(posts.body,''),1,160) AS preview, COALESCE(NULLIF(posts.edited_comment,''), posts.draft) AS comment FROM jobs JOIN posts ON posts.id=jobs.post_id WHERE {clause} ORDER BY {JOB_SORTS.get(sort, JOB_SORTS['next'])} LIMIT ? OFFSET ?", (*params, limit, offset))
+    return ([dict(r) for r in rows], total)
+def queue_counts():
+    c = {r['status']: r['n'] for r in db.query('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status')}
+    c['active'] = c.get('queued', 0) + c.get('running', 0)
+    c.update({'k_' + r['kind']: r['n'] for r in db.query("SELECT kind, COUNT(*) AS n FROM jobs WHERE status IN ('queued','running') GROUP BY kind")})
+    return c
+def jobs_by_ids(ids):
+    return [dict(r) for r in db.query(f'SELECT * FROM jobs WHERE id IN ({",".join("?" * len(ids))})', ids)]
+def cancel_jobs_by_ids(ids):
+    ph = ','.join('?' * len(ids))
+    with db.tx() as c:
+        for r in c.execute(f"SELECT post_id FROM jobs WHERE id IN ({ph}) AND kind='comment' AND status='queued'", ids).fetchall():
+            c.execute("UPDATE posts SET comment_status='draft' WHERE id=? AND comment_status='queued'", (r['post_id'],))
+        return c.execute(f"UPDATE jobs SET status='cancelled', updated_at=? WHERE id IN ({ph}) AND status='queued'", (now_iso(), *ids)).rowcount
+def run_jobs_now(ids):
+    now = now_iso()
+    return db.execute(f"UPDATE jobs SET next_run_at=?, updated_at=? WHERE id IN ({','.join('?' * len(ids))}) AND status='queued'", (now, now, *ids)).rowcount
+def delete_jobs(ids):
+    return db.execute(f"DELETE FROM jobs WHERE id IN ({','.join('?' * len(ids))}) AND status!='running'", ids).rowcount
+def clear_finished():
+    return db.execute("DELETE FROM jobs WHERE status IN ('done','cancelled')").rowcount

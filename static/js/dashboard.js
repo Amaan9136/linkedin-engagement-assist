@@ -354,6 +354,99 @@ function initLogs() {
   loadLogs();
   setInterval(loadLogs, 15000);
 }
+const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 25, total: 0, selected: new Set(), sig: ''};
+function qCount() {
+  $('#count').textContent = qstate.total + ' job(s)' + (qstate.selected.size ? ' · ' + qstate.selected.size + ' selected' : '');
+}
+function jobRow(j) {
+  const chk = h('input', {type: 'checkbox', onchange: e => { e.target.checked ? qstate.selected.add(j.id) : qstate.selected.delete(j.id); qCount(); }});
+  chk.checked = qstate.selected.has(j.id);
+  const run = action => async () => {
+    await act(() => api('POST', '/api/queue/bulk', {action, ids: [j.id]}));
+    qstate.selected.delete(j.id);
+    loadQueue(true);
+  };
+  return h('tr', {},
+    h('td', {}, chk),
+    h('td', {}, j.id),
+    h('td', {class: 'msg'}, h('strong', {}, j.author_name || 'Unknown author'), j.title ? ' · ' + j.title : '', h('div', {class: 'muted'}, j.preview || '(no text)'), j.kind === 'comment' && j.comment ? h('div', {class: 'draft'}, j.comment) : null),
+    h('td', {}, badge({ai: 'AI draft', like: 'Like', comment: 'Comment'}[j.kind] || j.kind)),
+    h('td', {}, badge(j.status, statusClass(j.status === 'running' ? 'queued' : j.status))),
+    h('td', {}, j.attempts),
+    h('td', {}, j.status === 'queued' ? fmt(j.next_run_at) : '–'),
+    h('td', {}, fmt(j.updated_at)),
+    h('td', {class: 'msg err'}, j.last_error || ''),
+    h('td', {},
+      h('div', {class: 'row-actions'},
+        h('a', {class: 'btn btn-sm', href: j.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open this post on LinkedIn.'}, 'Open post'),
+        j.status === 'queued' ? h('button', {class: 'btn btn-sm', title: 'Make this job due right now.', onclick: run('run_now')}, 'Run now') : null,
+        j.status === 'queued' ? h('button', {class: 'btn btn-sm btn-danger', title: 'Take this job out of the queue.', onclick: () => { if (confirm('Remove this job from the queue?')) run('cancel')(); }}, 'Remove') : null,
+        ['failed', 'cancelled'].includes(j.status) ? h('button', {class: 'btn btn-sm', title: 'Put this job back in the queue.', onclick: run('retry')}, 'Retry') : null,
+        j.status !== 'running' ? h('button', {class: 'btn btn-sm', title: 'Delete this job record.', onclick: run('delete')}, 'Delete') : null)));
+}
+async function loadQueue(force) {
+  try {
+    const qs = new URLSearchParams({status: qstate.status, kind: qstate.kind, sort: qstate.sort, q: qstate.q, page: qstate.page, per_page: qstate.per});
+    const d = await api('GET', '/api/queue?' + qs);
+    const pages = Math.max(1, Math.ceil(d.total / qstate.per));
+    if (qstate.page > pages) {
+      qstate.page = pages;
+      return loadQueue(true);
+    }
+    const sig = JSON.stringify(d);
+    if (!force && sig === qstate.sig) return;
+    qstate.sig = sig;
+    qstate.total = d.total;
+    document.querySelectorAll('[data-qcount]').forEach(n => { n.textContent = d.counts[n.dataset.qcount] ?? 0; });
+    $('#q-cap').textContent = d.counts.active + ' / ' + d.max_queue;
+    $('#q-body').replaceChildren(...(d.jobs.length ? d.jobs.map(jobRow) : [h('tr', {}, h('td', {colspan: '10', class: 'muted'}, 'No jobs match this view.'))]));
+    $('#page-info').textContent = 'Page ' + qstate.page + ' of ' + pages;
+    $('#prev').disabled = qstate.page <= 1;
+    $('#next').disabled = qstate.page >= pages;
+    $('#select-all').checked = d.jobs.length > 0 && d.jobs.every(j => qstate.selected.has(j.id));
+    qCount();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+function initQueue() {
+  hint($('#q-status'), $('#filter-hint'));
+  hint($('#bulk-action'), $('#bulk-hint'));
+  $('#q-status').onchange = e => { qstate.status = e.target.value; qstate.page = 1; loadQueue(true); };
+  $('#q-kind').onchange = e => { qstate.kind = e.target.value; qstate.page = 1; loadQueue(true); };
+  document.querySelectorAll('[data-kind]').forEach(c => { c.style.cursor = 'pointer'; c.onclick = () => { $('#q-kind').value = qstate.kind = c.dataset.kind; qstate.page = 1; loadQueue(true); }; });
+  $('#sort').onchange = e => { qstate.sort = e.target.value; qstate.page = 1; loadQueue(true); };
+  let t;
+  $('#search').oninput = e => { clearTimeout(t); t = setTimeout(() => { qstate.q = e.target.value.trim(); qstate.page = 1; loadQueue(true); }, 300); };
+  $('#btn-refresh').onclick = () => loadQueue(true);
+  $('#prev').onclick = () => { qstate.page--; loadQueue(true); };
+  $('#next').onclick = () => { qstate.page++; loadQueue(true); };
+  $('#select-all').onchange = e => {
+    document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => {
+      c.checked = e.target.checked;
+      c.dispatchEvent(new Event('change'));
+    });
+  };
+  $('#q-clear').onclick = async () => {
+    if (!confirm('Delete every done and cancelled job record?')) return;
+    await act(() => api('POST', '/api/queue/clear'));
+    qstate.selected.clear();
+    loadQueue(true);
+  };
+  $('#bulk-run').onclick = async () => {
+    const action = $('#bulk-action').value;
+    const ids = [...qstate.selected];
+    if (!action) return toast('Choose a bulk action', true);
+    if (!ids.length) return toast('Select at least one job', true);
+    if (action === 'cancel' && !confirm('Remove ' + ids.length + ' job(s) from the queue?')) return;
+    if (action === 'delete' && !confirm('Delete ' + ids.length + ' job record(s)?')) return;
+    await act(() => api('POST', '/api/queue/bulk', {action, ids}));
+    qstate.selected.clear();
+    loadQueue(true);
+  };
+  loadQueue(true);
+  setInterval(() => { if (!document.hidden) loadQueue(); }, 3000);
+}
 try {
   const c = JSON.parse(sessionStorage.getItem('pill'));
   if (c) { $('#health-pill').textContent = c[0]; $('#health-pill').className = 'pill pill-' + c[1]; }
@@ -364,4 +457,5 @@ if (page === 'dashboard') initDashboard();
 if (page === 'posts') initPosts();
 if (page === 'settings') initSettings();
 if (page === 'logs') initLogs();
+if (page === 'queue') initQueue();
 })();

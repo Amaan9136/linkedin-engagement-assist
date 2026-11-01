@@ -10,7 +10,7 @@ from flask import Flask, abort, jsonify, request, session, url_for
 import logging_setup
 from config import ConfigError, default_settings, load_config
 from database import db, migrations, models
-from routes import auth, dashboard, posts, settings, system
+from routes import auth, dashboard, jobs, posts, settings, system
 from services.monitoring_worker import MonitoringWorker
 log = logging.getLogger('linkedin.app')
 def create_app():
@@ -26,7 +26,7 @@ def create_app():
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.extensions['cfg'] = cfg
-    for module in (auth, dashboard, posts, settings, system):
+    for module in (auth, dashboard, jobs, posts, settings, system):
         app.register_blueprint(module.bp)
     @app.before_request
     def guard():
