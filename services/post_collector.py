@@ -103,7 +103,7 @@ def to_posts(items, lookback_days):
         except Exception:
             log.exception('Could not parse a feed item')
     return posts
-def collect(browser, deep=False, lookback_days=7):
+def collect(browser, deep=False, lookback_days=1):
     page = browser.goto_feed()
     max_scrolls = 2 if deep else 4
     seen = {}
