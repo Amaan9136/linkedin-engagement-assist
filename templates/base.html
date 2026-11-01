@@ -11,15 +11,15 @@
 <header class="topbar">
 <div class="brand">LinkedIn Engagement Assistant</div>
 <nav>
-<a href="/" class="{{ 'active' if page == 'dashboard' }}">Dashboard</a>
-<a href="/posts" class="{{ 'active' if page == 'posts' }}">Posts</a>
-<a href="/queue" class="{{ 'active' if page == 'queue' }}">Queue</a>
-<a href="/settings" class="{{ 'active' if page == 'settings' }}">Settings</a>
-<a href="/logs" class="{{ 'active' if page == 'logs' }}">Logs</a>
+<a href="/" class="{{ 'active' if page == 'dashboard' }}" title="Overview, health and daily limits.">Dashboard</a>
+<a href="/posts" class="{{ 'active' if page == 'posts' }}" title="Browse posts and manage drafts, likes and comments.">Posts</a>
+<a href="/queue" class="{{ 'active' if page == 'queue' }}" title="See and manage the work waiting to be done.">Queue</a>
+<a href="/settings" class="{{ 'active' if page == 'settings' }}" title="Change how the assistant behaves.">Settings</a>
+<a href="/logs" class="{{ 'active' if page == 'logs' }}" title="See what the assistant has been doing.">Logs</a>
 </nav>
 <div class="right">
-<span id="health-pill" class="pill pill-warn">Checking…</span>
-<form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-ghost" type="submit" title="Sign out of the dashboard.">Logout</button></form>
+<span id="health-pill" class="pill pill-warn" title="Overall health of the assistant.">Checking…</span>
+<form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-ghost" type="submit" title="Sign out of the dashboard.">Sign out</button></form>
 </div>
 </header>
 <main class="container">

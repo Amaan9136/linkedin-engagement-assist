@@ -72,13 +72,17 @@ async function act(fn, okMsg) {
     return null;
   }
 }
+const STATUS = {none: 'not started', pending: 'waiting', generating: 'writing', queued: 'waiting', running: 'running', publishing: 'posting', published: 'posted', approved: 'approved', draft: 'draft ready', liked: 'liked', failed: 'failed', verification_required: 'needs your check', done: 'finished', cancelled: 'removed', skipped_insufficient_text: 'too little text', ok: 'OK', up: 'online', down: 'offline', auth_required: 'login needed', paused: 'paused', recovering: 'recovering', stopped: 'stopped'};
+function nice(v) {
+  return STATUS[v] || String(v ?? '–').replace(/_/g, ' ');
+}
 function pillState(st) {
   if (!st) return ['Checking…', 'warn'];
-  if (!st.worker_alive) return ['Worker stopped', 'bad'];
+  if (!st.worker_alive) return ['Assistant stopped', 'bad'];
   if (st.monitor_state === 'recovering') return ['Recovering', 'warn'];
-  if (st.browser_status !== 'running') return ['Browser ' + st.browser_status, 'bad'];
-  if (st.auth_status !== 'ok') return ['Login required', 'warn'];
-  if (st.ai_status !== 'up') return ['AI ' + st.ai_status, 'warn'];
+  if (st.browser_status !== 'running') return ['Browser ' + nice(st.browser_status), 'bad'];
+  if (st.auth_status !== 'ok') return ['LinkedIn login needed', 'warn'];
+  if (st.ai_status !== 'up') return ['AI service ' + nice(st.ai_status), 'warn'];
   if (st.monitor_state === 'paused') return ['Paused', 'warn'];
   return ['Running', 'ok'];
 }
@@ -92,11 +96,13 @@ async function refreshStatus() {
     try { sessionStorage.setItem('pill', JSON.stringify([text, cls])); } catch (e) {}
     if (page === 'dashboard') {
       document.querySelectorAll('[data-stat]').forEach(n => { n.textContent = d.stats[n.dataset.stat] ?? 0; });
+      document.querySelectorAll('[data-limit]').forEach(n => { const l = d.config[n.dataset.limit]; n.textContent = l ? ' / ' + l : ' (no limit)'; });
+      [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
       const s = d.status;
-      $('#st-monitor').textContent = s.worker_alive ? s.monitor_state : 'stopped';
-      $('#st-browser').textContent = s.browser_status;
-      $('#st-auth').textContent = s.auth_status;
-      $('#st-ai').textContent = s.ai_status;
+      $('#st-monitor').textContent = nice(s.worker_alive ? s.monitor_state : 'stopped');
+      $('#st-browser').textContent = nice(s.browser_status);
+      $('#st-auth').textContent = nice(s.auth_status);
+      $('#st-ai').textContent = nice(s.ai_status);
       $('#st-last').textContent = fmt(s.last_poll_ok);
       const u = s.ai_usage || {};
       const uok = u.status === 'ok';
@@ -111,10 +117,10 @@ async function refreshStatus() {
     }
     if (page === 'posts') {
       const on = d.status.autoscroll_until && Date.parse(d.status.autoscroll_until) > Date.now();
-      $('#btn-autoscroll').textContent = on ? 'Stop auto scroll' : 'Auto scroll';
+      $('#btn-autoscroll').textContent = on ? 'Stop collecting' : 'Collect more posts';
       $('#btn-autoscroll').classList.toggle('btn-primary', !!on);
       state.autoAi = !!d.config.auto_ai;
-      $('#btn-autoai').textContent = 'Auto AI drafts: ' + (state.autoAi ? 'On' : 'Off');
+      $('#btn-autoai').textContent = 'Auto-write drafts: ' + (state.autoAi ? 'On' : 'Off');
       $('#btn-autoai').classList.toggle('btn-primary', state.autoAi);
     }
   } catch (e) {
@@ -162,20 +168,20 @@ function postCard(p) {
     p.like_status !== 'liked' ? h('button', {class: 'btn btn-sm', title: 'Queue a like for this post.', onclick: run('POST', '/like')}, 'Like') : null,
     ['failed', 'verification_required'].includes(p.comment_status) || ['failed', 'verification_required'].includes(p.like_status) || p.ai_status === 'failed' ? h('button', {class: 'btn btn-sm', title: 'Retry the failed or unverified work now.', onclick: run('POST', '/retry')}, 'Retry') : null,
     p.comment_status === 'verification_required' || p.like_status === 'verification_required' ? h('button', {class: 'btn btn-sm btn-primary', title: 'Confirm it went through on LinkedIn and mark it done.', onclick: () => { if (confirm('Was this really done on LinkedIn?')) run('POST', '/confirm')(); }}, 'Mark as done') : null,
-    p.skipped ? h('button', {class: 'btn btn-sm', title: 'Put this post back into automation.', onclick: run('POST', '/reset')}, 'Reset skip') : h('button', {class: 'btn btn-sm btn-danger', title: 'Exclude this post from automation.', onclick: () => { if (confirm('Skip this post?')) run('POST', '/skip')(); }}, 'Skip')
+    p.skipped ? h('button', {class: 'btn btn-sm', title: 'Bring this post back so the assistant handles it again.', onclick: run('POST', '/reset')}, 'Un-skip') : h('button', {class: 'btn btn-sm btn-danger', title: 'Ignore this post: no automatic likes or comments.', onclick: () => { if (confirm('Skip this post?')) run('POST', '/skip')(); }}, 'Skip')
   ];
   return h('div', {class: 'post'},
     chk,
     h('div', {class: 'post-main'},
       h('h3', {}, p.author_name || 'Unknown author', p.title ? ' · ' + p.title : ''),
-      h('div', {class: 'meta'}, 'Published ' + fmt(p.published_at) + ' · Discovered ' + fmt(p.discovered_at)),
+      h('div', {class: 'meta'}, 'Posted ' + fmt(p.published_at) + ' · Found ' + fmt(p.discovered_at)),
       h('div', {class: 'preview'}, p.preview || '(no text)'),
       h('div', {class: 'badges'},
-        badge('AI: ' + p.ai_status, statusClass(p.ai_status)),
-        badge('Comment: ' + p.comment_status, statusClass(p.comment_status)),
-        badge('Like: ' + p.like_status, statusClass(p.like_status)),
-        p.skipped ? badge('Skipped: ' + (p.skip_reason || ''), 'warn') : null,
-        p.retry_count ? badge('Retries: ' + p.retry_count + (p.next_retry_at ? ' · next ' + fmt(p.next_retry_at) : ''), 'warn') : null),
+        badge('AI draft: ' + nice(p.ai_status), statusClass(p.ai_status)),
+        badge('Comment: ' + nice(p.comment_status), statusClass(p.comment_status)),
+        badge('Like: ' + nice(p.like_status), statusClass(p.like_status)),
+        p.skipped ? badge('Skipped' + (p.skip_reason ? ': ' + p.skip_reason : ''), 'warn') : null,
+        p.retry_count ? badge('Tried again ' + p.retry_count + ' time(s)' + (p.next_retry_at ? ' · next try ' + fmt(p.next_retry_at) : ''), 'warn') : null),
       p.comment ? h('div', {class: 'draft'}, p.comment) : null,
       p.last_error ? h('div', {class: 'err'}, p.last_error) : null,
       h('div', {class: 'row-actions'}, btns)));
@@ -186,7 +192,7 @@ async function loadPosts() {
     const d = await api('GET', '/api/posts?' + qs);
     state.total = d.total;
     const box = $('#posts');
-    box.replaceChildren(...(d.posts.length ? d.posts.map(postCard) : [h('p', {class: 'muted'}, 'No posts match this view.')]));
+    box.replaceChildren(...(d.posts.length ? d.posts.map(postCard) : [h('p', {class: 'muted'}, 'No posts match these filters.')]));
     const pages = Math.max(1, Math.ceil(d.total / state.per));
     $('#page-info').textContent = 'Page ' + state.page + ' of ' + pages;
     $('#count').textContent = d.total + ' post(s)';
@@ -229,10 +235,10 @@ async function openDetail(id) {
     h('div', {class: 'row-actions'},
       editable ? h('button', {class: 'btn btn-primary btn-sm', title: 'Save your edited comment.', onclick: save}, 'Save edit') : null,
       h('button', {class: 'btn btn-sm', title: 'Close this window.', onclick: close}, 'Close')),
-    h('p', {}, h('strong', {}, 'Processing history')),
+    h('p', {}, h('strong', {}, 'Activity history')),
     h('ul', {class: 'history'},
       d.actions.map(a => h('li', {}, fmt(a.created_at) + ' · ' + a.kind + ' · ' + a.status + (a.detail ? ' · ' + a.detail : ''))),
-      d.jobs.map(j => h('li', {}, 'job ' + j.kind + ' · ' + j.status + ' · attempts ' + j.attempts + (j.last_error ? ' · ' + j.last_error : '')))));
+      d.jobs.map(j => h('li', {}, 'Queue job: ' + j.kind + ' · ' + nice(j.status) + ' · tries ' + j.attempts + (j.last_error ? ' · ' + j.last_error : '')))));
   dlg.showModal();
 }
 function initPosts() {
@@ -293,13 +299,15 @@ function field(key, spec, value) {
   }
   return h('div', {class: 'field', 'data-key': key}, h('label', {for: id}, spec.label), h('span', {class: 'hint'}, spec.help), input, h('span', {class: 'error'}));
 }
+const GROUPS = [['Feed checking', 'How the assistant looks for new posts.', ['monitoring_enabled', 'poll_interval', 'lookback_days', 'poll_backlog_limit']], ['AI drafts', 'Which AI writes your comment drafts and how it behaves.', ['ai_model', 'ollama_endpoint', 'ai_timeout', 'auto_ai', 'ai_gap', 'ai_hourly_limit', 'comment_style', 'max_comment_length', 'comment_max_age_hours']], ['Publishing', 'What happens automatically and what waits for you.', ['publishing_mode', 'auto_like', 'auto_comment', 'like_max_age_hours']], ['Daily limits and pacing', 'Keeps your activity natural and your LinkedIn account safe.', ['daily_like_limit', 'daily_comment_limit', 'like_gap', 'comment_cooldown', 'post_retry_cooldown']], ['Queue and retries', 'How jobs are processed and tried again when something goes wrong.', ['batch_size', 'max_queue', 'max_retries', 'backoff_base', 'backoff_max']], ['Display and logs', 'How times are shown and how much detail is logged.', ['log_level', 'timezone']]];
 async function initSettings() {
   const form = $('#settings-form');
   let specs;
   try {
     const d = await api('GET', '/api/settings');
     specs = d.specs;
-    form.replaceChildren(...Object.keys(specs).map(k => field(k, specs[k], d.settings[k])));
+    const rest = Object.keys(specs).filter(k => !GROUPS.some(g => g[2].includes(k)));
+    form.replaceChildren(...[...GROUPS, ['Other', '', rest]].filter(g => g[2].some(k => specs[k])).map(([title, desc, keys]) => h('section', {class: 'panel'}, h('h2', {}, title), h('p', {class: 'hint'}, desc), h('div', {class: 'form-grid'}, keys.filter(k => specs[k]).map(k => field(k, specs[k], d.settings[k]))))));
   } catch (e) {
     return toast(e.message, true);
   }
@@ -371,7 +379,7 @@ function jobRow(j) {
     h('td', {}, j.id),
     h('td', {class: 'msg'}, h('strong', {}, j.author_name || 'Unknown author'), j.title ? ' · ' + j.title : '', h('div', {class: 'muted'}, j.preview || '(no text)'), j.kind === 'comment' && j.comment ? h('div', {class: 'draft'}, j.comment) : null),
     h('td', {}, badge({ai: 'AI draft', like: 'Like', comment: 'Comment'}[j.kind] || j.kind)),
-    h('td', {}, badge(j.status, statusClass(j.status === 'running' ? 'queued' : j.status))),
+    h('td', {}, badge(nice(j.status), statusClass(j.status === 'running' ? 'queued' : j.status))),
     h('td', {}, j.attempts),
     h('td', {}, j.status === 'queued' ? fmt(j.next_run_at) : '–'),
     h('td', {}, fmt(j.updated_at)),
@@ -399,7 +407,8 @@ async function loadQueue(force) {
     qstate.total = d.total;
     document.querySelectorAll('[data-qcount]').forEach(n => { n.textContent = d.counts[n.dataset.qcount] ?? 0; });
     $('#q-cap').textContent = d.counts.active + ' / ' + d.max_queue;
-    $('#q-body').replaceChildren(...(d.jobs.length ? d.jobs.map(jobRow) : [h('tr', {}, h('td', {colspan: '10', class: 'muted'}, 'No jobs match this view.'))]));
+    $('#q-limits').textContent = 'Last 24 hours: ' + d.usage.like + ' of ' + (d.limits.like || 'unlimited') + ' likes · ' + d.usage.comment + ' of ' + (d.limits.comment || 'unlimited') + ' comments. Jobs wait automatically when a daily limit is reached.';
+    $('#q-body').replaceChildren(...(d.jobs.length ? d.jobs.map(jobRow) : [h('tr', {}, h('td', {colspan: '10', class: 'muted'}, 'No jobs match these filters.'))]));
     $('#page-info').textContent = 'Page ' + qstate.page + ' of ' + pages;
     $('#prev').disabled = qstate.page <= 1;
     $('#next').disabled = qstate.page >= pages;
@@ -438,7 +447,7 @@ function initQueue() {
     const ids = [...qstate.selected];
     if (!action) return toast('Choose a bulk action', true);
     if (!ids.length) return toast('Select at least one job', true);
-    if (action === 'cancel' && !confirm('Remove ' + ids.length + ' job(s) from the queue?')) return;
+    if (action === 'cancel' && !confirm('Take ' + ids.length + ' job(s) out of the queue?')) return;
     if (action === 'delete' && !confirm('Delete ' + ids.length + ' job record(s)?')) return;
     await act(() => api('POST', '/api/queue/bulk', {action, ids}));
     qstate.selected.clear();

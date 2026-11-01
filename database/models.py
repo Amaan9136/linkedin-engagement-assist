@@ -115,7 +115,18 @@ def list_posts(flt='all', q='', limit=25, offset=0, sort='recent'):
 def stats():
     def n(sql):
         return db.query_one(sql)[0]
-    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")}
+    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')"), 'likes_24h': daily_used('like'), 'comments_24h': daily_used('comment')}
+def daily_used(kind):
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
+    return db.query_one("SELECT COUNT(*) FROM actions WHERE kind=? AND status='success' AND COALESCE(detail,'')!='already liked' AND created_at>=?", (kind, cutoff))[0]
+def daily_wait(kind, limit):
+    if limit <= 0:
+        return 0
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
+    rows = db.query("SELECT created_at FROM actions WHERE kind=? AND status='success' AND COALESCE(detail,'')!='already liked' AND created_at>=? ORDER BY id DESC LIMIT ?", (kind, cutoff, limit))
+    if len(rows) < limit:
+        return 0
+    return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
 def queue_size():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")[0]
 def ai_backlog():

@@ -2,64 +2,64 @@
 {% block title %}Queue · LinkedIn Engagement Assistant{% endblock %}
 {% block content %}
 <section class="cards">
-<div class="card" data-kind="ai" title="Show only AI draft jobs."><span class="label">AI drafts in queue</span><span class="hint">Comment drafts waiting to be written.</span><strong data-qcount="k_ai">0</strong></div>
-<div class="card" data-kind="like" title="Show only like jobs."><span class="label">Likes in queue</span><span class="hint">Posts waiting to be liked.</span><strong data-qcount="k_like">0</strong></div>
-<div class="card" data-kind="comment" title="Show only comment jobs."><span class="label">Comments in queue</span><span class="hint">Comments waiting to be published.</span><strong data-qcount="k_comment">0</strong></div>
-<div class="card"><span class="label">Active</span><span class="hint">Queued and running jobs.</span><strong data-qcount="active">0</strong></div>
-<div class="card"><span class="label">Queued</span><span class="hint">Jobs waiting for their turn.</span><strong data-qcount="queued">0</strong></div>
-<div class="card"><span class="label">Running</span><span class="hint">Jobs the worker is processing now.</span><strong data-qcount="running">0</strong></div>
-<div class="card"><span class="label">Failed</span><span class="hint">Jobs that gave up after retries.</span><strong data-qcount="failed">0</strong></div>
-<div class="card"><span class="label">Done</span><span class="hint">Jobs that finished successfully.</span><strong data-qcount="done">0</strong></div>
-<div class="card"><span class="label">Cancelled</span><span class="hint">Jobs removed from the queue.</span><strong data-qcount="cancelled">0</strong></div>
-<div class="card"><span class="label">Capacity</span><span class="hint">Active jobs against the queue limit.</span><strong id="q-cap">–</strong></div>
+<div class="card" data-kind="ai" title="Show only AI draft jobs."><span class="label">AI drafts waiting</span><span class="hint">Comment drafts still to be written.</span><strong data-qcount="k_ai">0</strong></div>
+<div class="card" data-kind="like" title="Show only like jobs."><span class="label">Likes waiting</span><span class="hint">Posts still to be liked.</span><strong data-qcount="k_like">0</strong></div>
+<div class="card" data-kind="comment" title="Show only comment jobs."><span class="label">Comments waiting</span><span class="hint">Comments still to be posted.</span><strong data-qcount="k_comment">0</strong></div>
+<div class="card"><span class="label">Active jobs</span><span class="hint">Waiting or running right now.</span><strong data-qcount="active">0</strong></div>
+<div class="card"><span class="label">Running now</span><span class="hint">Jobs being worked on at this moment.</span><strong data-qcount="running">0</strong></div>
+<div class="card"><span class="label">Failed</span><span class="hint">Jobs that gave up after several tries.</span><strong data-qcount="failed">0</strong></div>
+<div class="card"><span class="label">Finished</span><span class="hint">Jobs completed successfully.</span><strong data-qcount="done">0</strong></div>
+<div class="card"><span class="label">Removed</span><span class="hint">Jobs taken out of the queue.</span><strong data-qcount="cancelled">0</strong></div>
+<div class="card"><span class="label">Queue space used</span><span class="hint">Active jobs compared with the queue size limit.</span><strong id="q-cap">–</strong></div>
 </section>
+<p id="q-limits" class="muted"></p>
 <section class="panel">
 <h2>Queue</h2>
-<p class="hint">Every AI, like and comment job, updated live. Select jobs to run, retry, remove or delete them.</p>
+<p class="hint">All AI draft, like and comment jobs, updated live. Select jobs to run, retry, remove or delete them.</p>
 <div class="toolbar">
-<select id="q-status">
-<option value="active" data-hint="Jobs that are queued or running.">Active (queued + running)</option>
-<option value="queued" data-hint="Jobs waiting for their turn.">Queued</option>
-<option value="running" data-hint="Jobs the worker is processing right now.">Running</option>
+<select id="q-status" title="Choose which jobs to show.">
+<option value="active" data-hint="Jobs that are waiting or running.">Active (waiting + running)</option>
+<option value="queued" data-hint="Jobs waiting for their turn.">Waiting</option>
+<option value="running" data-hint="Jobs being worked on right now.">Running</option>
 <option value="failed" data-hint="Jobs that failed and stopped retrying.">Failed</option>
-<option value="cancelled" data-hint="Jobs removed from the queue.">Cancelled</option>
-<option value="done" data-hint="Jobs that finished successfully.">Done</option>
+<option value="cancelled" data-hint="Jobs that were taken out of the queue.">Removed</option>
+<option value="done" data-hint="Jobs that finished successfully.">Finished</option>
 <option value="all" data-hint="Every job in every state.">All jobs</option>
 </select>
-<select id="q-kind" title="Show only one kind of job.">
-<option value="all">All kinds</option>
+<select id="q-kind" title="Show only one type of job.">
+<option value="all">All types</option>
 <option value="ai">AI drafts</option>
 <option value="like">Likes</option>
 <option value="comment">Comments</option>
 </select>
-<select id="sort" title="Choose how the jobs are ordered.">
+<select id="sort" title="Choose how jobs are ordered.">
 <option value="next">Next to run</option>
 <option value="newest">Newest first</option>
 <option value="oldest">Oldest first</option>
-<option value="updated">Recently updated</option>
-<option value="attempts">Most attempts</option>
+<option value="updated">Recently changed</option>
+<option value="attempts">Most tries</option>
 <option value="author">Author A–Z</option>
 </select>
-<input id="search" type="search" placeholder="Search author, text, error">
+<input id="search" type="search" placeholder="Search by author, text or error" title="Type to filter jobs as you type.">
 <button class="btn" id="btn-refresh" title="Reload the queue now.">Refresh</button>
-<button class="btn btn-danger" id="q-clear" title="Delete every done and cancelled job record.">Clear finished</button>
+<button class="btn btn-danger" id="q-clear" title="Delete the records of all finished and removed jobs.">Clear finished</button>
 </div>
 <p id="filter-hint" class="hint"></p>
 <div class="toolbar bulk">
 <label class="check"><input type="checkbox" id="select-all"> Select all</label>
-<select id="bulk-action">
-<option value="">Bulk action…</option>
-<option value="run_now" data-hint="Make the selected queued jobs due right now.">Run now</option>
-<option value="retry" data-hint="Put the selected failed or cancelled jobs back in the queue.">Retry</option>
-<option value="cancel" data-hint="Take the selected queued jobs out of the queue.">Remove from queue</option>
-<option value="delete" data-hint="Delete the selected job records; running jobs are kept.">Delete records</option>
+<select id="bulk-action" title="Choose what to do with the selected jobs.">
+<option value="">Choose an action…</option>
+<option value="run_now" data-hint="Make the selected waiting jobs run as soon as possible.">Run now</option>
+<option value="retry" data-hint="Put the selected failed or removed jobs back in the queue.">Retry</option>
+<option value="cancel" data-hint="Take the selected waiting jobs out of the queue.">Remove from queue</option>
+<option value="delete" data-hint="Delete the records of the selected jobs. Running jobs are kept.">Delete records</option>
 </select>
-<button class="btn" id="bulk-run" title="Run the chosen bulk action on the selected jobs.">Apply</button>
+<button class="btn btn-primary" id="bulk-run" title="Run the chosen action on the selected jobs.">Apply</button>
 <span id="count" class="muted"></span>
 </div>
 <p id="bulk-hint" class="hint"></p>
 <div class="table-wrap">
-<table class="logs"><thead><tr><th></th><th>ID</th><th>Post</th><th>Kind</th><th>Status</th><th>Attempts</th><th>Next run</th><th>Updated</th><th>Error</th><th>Actions</th></tr></thead><tbody id="q-body"></tbody></table>
+<table class="logs"><thead><tr><th></th><th>No.</th><th>Post</th><th>Type</th><th>Status</th><th>Tries</th><th>Runs at</th><th>Changed</th><th>Problem</th><th>Actions</th></tr></thead><tbody id="q-body"></tbody></table>
 </div>
 </section>
 <div class="pager"><button class="btn" id="prev" title="Go to the previous page.">Previous</button><span id="page-info" class="muted"></span><button class="btn" id="next" title="Go to the next page.">Next</button></div>

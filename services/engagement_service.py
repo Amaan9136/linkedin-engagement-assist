@@ -38,6 +38,9 @@ def run_like(job, post, browser, s):
     if post['like_status'] == 'liked' or models.has_success(pid, 'like'):
         models.update_post(pid, like_status='liked')
         return
+    wait = models.daily_wait('like', s['daily_like_limit'])
+    if wait > 0:
+        raise Deferred(min(wait, 600), 'daily like limit reached')
     wait = models.reserve_slot('last_like_at', s['like_gap'])
     if wait > 0:
         raise Deferred(wait, 'like pacing')
@@ -69,6 +72,9 @@ def run_comment(job, post, browser, s):
             models.update_post(pid, comment_status='verification_required', last_error='Could not verify whether the comment was posted; check the post manually')
             raise TemporaryError('Verification inconclusive')
         models.update_post(pid, verification_status='confirmed_absent')
+    wait = models.daily_wait('comment', s['daily_comment_limit'])
+    if wait > 0:
+        raise Deferred(min(wait, 600), 'daily comment limit reached')
     prev = models.get_meta('last_comment_at', '0')
     wait = models.reserve_slot('last_comment_at', s['comment_cooldown'])
     if wait > 0:

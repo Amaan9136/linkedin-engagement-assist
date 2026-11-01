@@ -30,7 +30,8 @@ def list_queue():
     except ValueError:
         return fail('Invalid pagination')
     rows, total = models.list_jobs(status, kind, q, per, (page - 1) * per, sort)
-    return ok(jobs=rows, total=total, page=page, per_page=per, counts=models.queue_counts(), max_queue=models.all_settings()['max_queue'])
+    s = models.all_settings()
+    return ok(jobs=rows, total=total, page=page, per_page=per, counts=models.queue_counts(), max_queue=s['max_queue'], usage={'like': models.daily_used('like'), 'comment': models.daily_used('comment')}, limits={'like': s['daily_like_limit'], 'comment': s['daily_comment_limit']})
 @bp.post('/api/queue/bulk')
 @api
 def bulk():

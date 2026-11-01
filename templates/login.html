@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in</title>
+<title>Sign in · LinkedIn Engagement Assistant</title>
 <link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body class="login-body">
 <form method="post" class="login-card">
 <h1>LinkedIn Engagement Assistant</h1>
+<p class="hint">Sign in with your admin password to open the dashboard.</p>
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label for="password">Admin password</label>
 <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>

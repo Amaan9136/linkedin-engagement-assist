@@ -1,10 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Settings · LinkedIn Engagement Assistant{% endblock %}
 {% block content %}
-<section class="panel">
-<h2>Configuration</h2>
-<p class="hint">Tune polling, AI, publishing, pacing and retries; changes apply without a restart.</p>
-<form id="settings-form" class="form-grid"></form>
-<div class="actions"><button class="btn btn-primary" id="save-settings" title="Save all settings now.">Save settings</button></div>
-</section>
+<form id="settings-form"></form>
+<div class="savebar"><span class="muted">Changes apply right away. No restart needed.</span><button class="btn btn-primary" id="save-settings" title="Save all settings now.">Save settings</button></div>
 {% endblock %}

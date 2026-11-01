@@ -25,7 +25,7 @@ Python · [Flask](https://flask.palletsprojects.com) + [Waitress](https://docs.p
 | `mixed` (default) | Automatic when enabled | Drafts wait for your approval and Publish |
 | `automatic` | Automatic when enabled | Published automatically when `auto_comment` is on |
 
-Automatic likes are paced (`like_gap`, default 20 s) and limited to posts newer than `like_max_age_hours` (default 72). All values are editable on the Settings page without a restart.
+Automatic likes are paced (`like_gap`, default 20 s) and limited to posts newer than `like_max_age_hours` (default 72). Likes and comments are also capped per rolling 24 hours (`daily_like_limit` default 60, `daily_comment_limit` default 30; 0 means no limit). All values are editable on the Settings page without a restart.
 
 ## Setup
 

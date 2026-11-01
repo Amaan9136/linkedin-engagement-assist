@@ -2,39 +2,48 @@
 {% block title %}Dashboard · LinkedIn Engagement Assistant{% endblock %}
 {% block content %}
 <section class="panel">
-<h2>Status</h2>
-<p class="hint">Live health and controls for monitoring, with totals for your posts below.</p>
+<h2>Assistant status</h2>
+<p class="hint">Check that everything is working. Use the buttons to pause, resume or restart parts of the assistant.</p>
 <div class="status-grid">
-<div><span class="label">Monitoring</span><span class="hint">Whether the feed poller is running or paused.</span><strong id="st-monitor">–</strong></div>
-<div><span class="label">Browser</span><span class="hint">State of the automated Chromium window.</span><strong id="st-browser">–</strong></div>
-<div><span class="label">LinkedIn session</span><span class="hint">Whether the saved login is still valid.</span><strong id="st-auth">–</strong></div>
-<div><span class="label">AI service</span><span class="hint">Whether Ollama and the model are reachable.</span><strong id="st-ai">–</strong></div>
-<div><span class="label">Last successful poll</span><span class="hint">When the feed was last read without errors.</span><strong id="st-last">–</strong></div>
-<div><span class="label">Next poll</span><span class="hint">When the feed will be checked next.</span><strong id="st-next">–</strong></div>
+<div><span class="label">Feed checking</span><span class="hint">Whether the assistant is looking for new posts.</span><strong id="st-monitor">–</strong></div>
+<div><span class="label">Browser</span><span class="hint">The background browser that works on LinkedIn.</span><strong id="st-browser">–</strong></div>
+<div><span class="label">LinkedIn login</span><span class="hint">Whether your saved LinkedIn login still works.</span><strong id="st-auth">–</strong></div>
+<div><span class="label">AI writer</span><span class="hint">Whether the AI that writes drafts can be reached.</span><strong id="st-ai">–</strong></div>
+<div><span class="label">Last feed check</span><span class="hint">When the feed was last read without problems.</span><strong id="st-last">–</strong></div>
+<div><span class="label">Next feed check</span><span class="hint">When the feed will be read again.</span><strong id="st-next">–</strong></div>
 </div>
 <p id="st-msg" class="muted"></p>
 <div class="actions">
-<button class="btn" id="btn-pause" title="Stop checking the feed; queued work is kept.">Pause monitoring</button>
-<button class="btn" id="btn-resume" title="Start checking the feed again.">Resume monitoring</button>
-<button class="btn" id="btn-poll" title="Check the feed for new posts right away.">Poll now</button>
-<button class="btn" id="btn-browser" title="Close and reopen the automated Chromium window.">Restart browser</button>
+<button class="btn" id="btn-pause" title="Stop looking for new posts. Work already in the queue is kept.">Pause feed checking</button>
+<button class="btn" id="btn-resume" title="Start looking for new posts again.">Resume feed checking</button>
+<button class="btn" id="btn-poll" title="Look for new posts right now.">Check feed now</button>
+<button class="btn" id="btn-browser" title="Close and reopen the background browser. Use this if something seems stuck.">Restart browser</button>
 </div>
 </section>
+<h3 class="section-title">Daily safety limits</h3>
 <section class="cards">
-<div class="card"><span class="label">Posts discovered</span><span class="hint">Total posts stored from your feed.</span><strong data-stat="posts_total">0</strong></div>
-<div class="card"><span class="label">Awaiting AI</span><span class="hint">Posts still waiting for a comment draft.</span><strong data-stat="pending_ai">0</strong></div>
-<div class="card"><span class="label">Drafts</span><span class="hint">Comments written but not yet published.</span><strong data-stat="drafts">0</strong></div>
-<div class="card"><span class="label">Comments published</span><span class="hint">Comments successfully posted to LinkedIn.</span><strong data-stat="comments_published">0</strong></div>
-<div class="card"><span class="label">Posts liked</span><span class="hint">Posts liked by the assistant or by you.</span><strong data-stat="liked">0</strong></div>
-<div class="card"><span class="label">Skipped</span><span class="hint">Posts excluded from automation.</span><strong data-stat="skipped">0</strong></div>
-<div class="card"><span class="label">Failed / retrying</span><span class="hint">Jobs that failed or are waiting to retry.</span><strong data-stat="failed_or_retrying">0</strong></div>
-<div class="card"><span class="label">Need verification</span><span class="hint">Actions whose result must be checked manually.</span><strong data-stat="verification_required">0</strong></div>
+<div class="card"><span class="label">Likes in the last 24 hours</span><span class="hint">Liking pauses at your daily limit to protect your account.</span><strong><span data-stat="likes_24h">0</span><small data-limit="daily_like_limit"></small></strong><div class="meter"><i id="m-likes"></i></div></div>
+<div class="card"><span class="label">Comments in the last 24 hours</span><span class="hint">Commenting pauses at your daily limit to protect your account.</span><strong><span data-stat="comments_24h">0</span><small data-limit="daily_comment_limit"></small></strong><div class="meter"><i id="m-comments"></i></div></div>
 </section>
+<p class="hint">You can change these limits on the <a href="/settings">Settings</a> page under Daily limits and pacing.</p>
+<h3 class="section-title">Your posts</h3>
 <section class="cards">
-<div class="card"><span class="label">Tokens used (24h)</span><span class="hint">Input plus output tokens sent to Ollama cloud today.</span><strong id="u-24h">–</strong></div>
-<div class="card"><span class="label">Tokens used (30d)</span><span class="hint">Input plus output tokens over the last 30 days.</span><strong id="u-30d">–</strong></div>
-<div class="card"><span class="label">Ollama plan left</span><span class="hint">Allowance remaining before the next reset.</span><strong id="u-left">–</strong></div>
-<div class="card"><span class="label">Allowance resets</span><span class="hint">When the Ollama allowance renews.</span><strong id="u-reset">–</strong></div>
+<div class="card"><span class="label">Posts found</span><span class="hint">All posts collected from your feed.</span><strong data-stat="posts_total">0</strong></div>
+<div class="card"><span class="label">Waiting for a draft</span><span class="hint">Posts the AI has not written a comment for yet.</span><strong data-stat="pending_ai">0</strong></div>
+<div class="card"><span class="label">Drafts ready</span><span class="hint">Comments written but not posted yet.</span><strong data-stat="drafts">0</strong></div>
+<div class="card"><span class="label">Comments posted</span><span class="hint">Comments successfully posted on LinkedIn.</span><strong data-stat="comments_published">0</strong></div>
+<div class="card"><span class="label">Posts liked</span><span class="hint">Posts liked by the assistant or by you.</span><strong data-stat="liked">0</strong></div>
+<div class="card"><span class="label">Skipped posts</span><span class="hint">Posts the assistant will leave alone.</span><strong data-stat="skipped">0</strong></div>
+<div class="card"><span class="label">Failed or retrying</span><span class="hint">Jobs that failed or are waiting for another try.</span><strong data-stat="failed_or_retrying">0</strong></div>
+<div class="card"><span class="label">Need your check</span><span class="hint">Actions you should confirm on LinkedIn yourself.</span><strong data-stat="verification_required">0</strong></div>
+<div class="card"><span class="label">Jobs in queue</span><span class="hint">Work waiting or running right now.</span><strong data-stat="queued_jobs">0</strong></div>
+</section>
+<h3 class="section-title">AI usage</h3>
+<section class="cards">
+<div class="card"><span class="label">Tokens used today</span><span class="hint">Text processed by Ollama cloud in the last 24 hours.</span><strong id="u-24h">–</strong></div>
+<div class="card"><span class="label">Tokens used this month</span><span class="hint">Text processed by Ollama cloud in the last 30 days.</span><strong id="u-30d">–</strong></div>
+<div class="card"><span class="label">Ollama plan left</span><span class="hint">What remains before your allowance resets.</span><strong id="u-left">–</strong></div>
+<div class="card"><span class="label">Allowance resets</span><span class="hint">When your Ollama allowance renews.</span><strong id="u-reset">–</strong></div>
 </section>
 <p id="u-msg" class="muted"></p>
 {% endblock %}
