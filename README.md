@@ -7,9 +7,10 @@ Local-first dashboard that monitors your LinkedIn feed with a persistent Playwri
 ## How it works
 - **Monitoring:** one worker thread polls the feed every 60 seconds (configurable), scrolls, extracts text-only post data in a single page evaluation, and stores new posts. The first run looks back over the previous seven days. Posts are deduplicated by their stable post ID with the normalized URL as fallback.
 - **AI drafts:** the model only ever receives text: body, title, accessible alt text, link descriptions and author name. Images and videos are never downloaded, stored or sent. Posts without enough meaningful text are marked `skipped_insufficient_text` and are not retried until you reset them.
-- **Engagement:** liking and commenting are tracked independently. Comments follow the publishing mode, a global cooldown (default 60 s, persisted in SQLite) and a per-post retry cooldown.
+- **Engagement:** liking and commenting are tracked independently, except that a post opened for a comment is liked first in the same visit (counted in the daily like limit). Comments follow the publishing mode, a global cooldown (default 60 s, persisted in SQLite) and a per-post retry cooldown.
 - **Auto connect:** when enabled, the worker opens LinkedIn My Network (`/mynetwork/grow/`), clicks Connect on suggested people one by one with a pause between requests (`connect_gap`, default 10 s) and scrolls only when no Connect button is left in view. Capped per rolling 24 hours (`daily_connect_limit`, default 60).
 - **Safeguards:** if LinkedIn shows the daily comment limit popup, commenting stops at once, a warning is logged and the Comments switch turns off until you resume it. Feed checking, likes, comments and connections each have their own pause/resume switch on the Dashboard, Posts and Queue pages.
+- **Parallel lanes:** feed checking, likes, comments, connections and AI drafts each run in their own thread with their own job queue. The four browser lanes share one Chromium process and login profile, and each keeps its own connection and tab open and reuses it instead of reopening.
 - **Reliability:** a persistent job queue in SQLite with exponential backoff, a worker supervisor that restarts after crashes, a database lease that prevents duplicate workers, and startup recovery of interrupted jobs.
 - **Uncertain results:** if a comment submission cannot be confirmed, the post becomes `verification_required`. The next attempt first checks the post for the comment and never blindly resubmits.
 
@@ -195,14 +196,14 @@ Logs are in `logs/app.log` (rotating) and on the Logs page. Secrets are redacted
 app.py                       Flask app factory, security headers, server entry point
 config.py                    .env loading and runtime setting validation
 database/                    SQLite connection, migrations, data access
-services/linkedin_browser.py Persistent Playwright context, like and comment actions
+services/linkedin_browser.py Shared Chromium host, per-lane Playwright connections, like, comment and connect actions
 services/post_collector.py   Feed discovery and text-only extraction
 services/text_extractor.py   Text cleaning, URL normalisation, AI context rules
 services/ollama_service.py   Ollama client and health check
 services/comment_service.py  Prompting, validation and draft storage
 services/engagement_service.py Like and comment execution, cooldowns, manual actions
 services/retry_service.py    Backoff, failure marking, restart recovery
-services/monitoring_worker.py Supervisor, polling loop, job processing
+services/monitoring_worker.py Supervisor and parallel lanes: feed, like, comment, connect, AI
 services/health_service.py   Runtime status and health checks
 routes/                      Auth, pages and JSON API
 templates/ static/           Dashboard UI

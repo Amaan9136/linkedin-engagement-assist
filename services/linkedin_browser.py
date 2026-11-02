@@ -1,8 +1,11 @@
 import logging
 import random
 import re
+import socket
 import subprocess
 import sys
+import threading
+import time
 from urllib.parse import unquote
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, LimitReached, PermanentError, TemporaryError
 try:
@@ -27,20 +30,90 @@ SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
 SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
-SEL_CONNECT = "button[aria-label*='Invite'][aria-label*='to connect']:not([data-skip]):visible"
+SEL_CONNECT = "button[aria-label*='Invite'][aria-label*='connect' i]:not([data-skip]):visible, button:text-is('Connect'):not([data-skip]):visible"
+CONNECT_LEFT_JS = "e => e.isConnected && (/^Invite .* connect/i.test(e.getAttribute('aria-label') || '') || (e.innerText || '').trim() === 'Connect')"
+CONNECT_NAME_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return (a.innerText || '').trim().split('\\n')[0]; } return ''; }"
 SEL_SEND_NOTE = "button[aria-label='Send without a note'], button:has-text('Send without a note')"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
+CLIP_JS = "(() => { const p = Clipboard.prototype, w = p.writeText; p.writeText = function (t) { window.__copied = t; return w.apply(this, arguments); }; document.addEventListener('copy', () => { const t = String(getSelection()); if (t) window.__copied = t; }, true); })()"
 def _norm(s):
     return re.sub('\\s+', ' ', s or '').strip().lower()
-class LinkedInBrowser:
+class BrowserHost:
     def __init__(self, cfg):
         self.cfg = cfg
+        self.proc = None
+        self.port = 0
+        self.gen = 0
+        self.links = {}
+        self.lock = threading.RLock()
+    def ensure(self):
+        with self.lock:
+            if self.proc is None or self.proc.poll() is not None:
+                self._launch()
+            return f'http://127.0.0.1:{self.port}'
+    def restart(self):
+        with self.lock:
+            self._kill()
+            self._launch()
+    def stop(self):
+        with self.lock:
+            self._kill()
+    def _kill(self):
+        p, self.proc = (self.proc, None)
+        if p is not None and p.poll() is None:
+            try:
+                p.terminate()
+                p.wait(10)
+            except Exception:
+                p.kill()
+    def _launch(self):
+        try:
+            self.cfg.profile_dir.mkdir(parents=True, exist_ok=True)
+            exe = self.cfg.chromium_exec
+            if not exe:
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as p:
+                    exe = p.chromium.executable_path
+            with socket.socket() as sk:
+                sk.bind(('127.0.0.1', 0))
+                port = sk.getsockname()[1]
+            args = [exe, f'--user-data-dir={self.cfg.profile_dir}', f'--remote-debugging-port={port}', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--hide-crash-restore-bubble', '--lang=en-US', '--window-size=1280,900']
+            if self.cfg.headless:
+                args.append('--headless=new')
+            if sys.platform.startswith('linux'):
+                args.append('--password-store=basic')
+                if self.cfg.no_sandbox:
+                    args.append('--no-sandbox')
+            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            raise BrowserUnavailable(LinkedInBrowser._explain(e)) from e
+        for _ in range(60):
+            if self.proc.poll() is not None:
+                break
+            try:
+                socket.create_connection(('127.0.0.1', port), timeout=1).close()
+                self.port = port
+                self.gen += 1
+                log.info('Browser process started (headless=%s)', self.cfg.headless)
+                return
+            except OSError:
+                time.sleep(0.5)
+        self._kill()
+        raise BrowserUnavailable('The browser did not start. Another Chromium may be using the profile, or Chromium is not installed (run: playwright install chromium)')
+class LinkedInBrowser:
+    def __init__(self, cfg, host):
+        self.cfg = cfg
+        self.host = host
         self._pw = None
+        self._browser = None
         self._ctx = None
         self._page = None
         self._card = None
-        self._links = {}
+        self._gen = 0
+        self._links = host.links
         self._link_fail = 0
+    def stale(self):
+        return self._gen != self.host.gen
     @property
     def started(self):
         return self._ctx is not None
@@ -50,23 +123,17 @@ class LinkedInBrowser:
         except ImportError as e:
             raise BrowserUnavailable('Playwright is not installed. Run: pip install playwright && playwright install chromium') from e
         try:
-            self.cfg.profile_dir.mkdir(parents=True, exist_ok=True)
+            endpoint = self.host.ensure()
             self._pw = sync_playwright().start()
-            args = ['--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
-            if sys.platform.startswith('linux'):
-                args.append('--password-store=basic')
-            if self.cfg.no_sandbox and sys.platform.startswith('linux'):
-                args.append('--no-sandbox')
-            kw = {'user_data_dir': str(self.cfg.profile_dir), 'headless': self.cfg.headless, 'args': args, 'viewport': {'width': 1280, 'height': 900} if self.cfg.headless else None, 'locale': 'en-US', 'ignore_default_args': ['--enable-automation']}
-            if self.cfg.chromium_exec:
-                kw['executable_path'] = self.cfg.chromium_exec
-            self._ctx = self._pw.chromium.launch_persistent_context(**kw)
-            if self.cfg.block_media and self.cfg.headless:
-                self._ctx.route('**/*', self._route)
+            self._browser = self._pw.chromium.connect_over_cdp(endpoint)
+            self._ctx = self._browser.contexts[0]
             self._ctx.set_default_timeout(20000)
-            self._ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin='https://www.linkedin.com')
-            self._ctx.add_init_script("(() => { const p = Clipboard.prototype, w = p.writeText; p.writeText = function (t) { window.__copied = t; return w.apply(this, arguments); }; document.addEventListener('copy', () => { const t = String(getSelection()); if (t) window.__copied = t; }, true); })()")
             self._ctx.set_default_navigation_timeout(45000)
+            try:
+                self._ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin='https://www.linkedin.com')
+            except Exception:
+                pass
+            self._gen = self.host.gen
             self._page = None
             self._get_page()
             log.info('Browser started (headless=%s)', self.cfg.headless)
@@ -102,13 +169,14 @@ class LinkedInBrowser:
             return 'No display available for a visible browser. Set BROWSER_HEADLESS=true or run scripts/login.py on a desktop'
         return 'Browser failed to start: ' + (msg.strip().splitlines()[0] if msg.strip() else type(e).__name__)
     def stop(self):
-        for obj, fn in ((self._ctx, 'close'), (self._pw, 'stop')):
+        for obj, fn in ((self._page, 'close'), (self._browser, 'close'), (self._pw, 'stop')):
             if obj is not None:
                 try:
                     getattr(obj, fn)()
                 except Exception:
                     pass
         self._ctx = None
+        self._browser = None
         self._pw = None
         self._page = None
     def restart(self):
@@ -116,13 +184,11 @@ class LinkedInBrowser:
         self.stop()
         self.start()
     def _get_page(self):
-        pages = [p for p in self._ctx.pages if not p.is_closed()]
-        for extra in (pages[1:] if self.cfg.headless else []):
-            try:
-                extra.close()
-            except Exception:
-                pass
-        self._page = pages[0] if pages else self._ctx.new_page()
+        if self._page is None or self._page.is_closed():
+            self._page = self._ctx.new_page()
+            if self.cfg.block_media and self.cfg.headless:
+                self._page.route('**/*', self._route)
+            self._page.add_init_script(CLIP_JS)
         return self._page
     def is_alive(self):
         if not self.started:
@@ -168,7 +234,7 @@ class LinkedInBrowser:
         try:
             if not self.cfg.headless:
                 url = self._get_page().url.lower()
-                if 'linkedin.com' in url and any((m in url for m in AUTH_MARKERS)):
+                if 'linkedin.com' in url and any((m in url for m in AUTH_MARKERS)) and (not any(('linkedin.com' in p.url.lower() and (not any((m in p.url.lower() for m in AUTH_MARKERS))) for p in self._ctx.pages))):
                     return ('auth_required', 'Complete the sign-in or verification in the open browser window')
             self.goto_feed()
             return ('ok', 'Logged in')
@@ -337,9 +403,7 @@ class LinkedInBrowser:
             return btn.get_attribute('aria-pressed') == 'true' or (a.startswith('Reaction button state') and 'no reaction' not in a)
         except (PWError, PWTimeout):
             return False
-    def like_post(self, url, post=None):
-        page = self._open_post(url, post)
-        update = self._scope(page)
+    def _like(self, page, update):
         btn = self._first_visible(update, SEL_LIKE)
         if btn is None:
             self.snapshot(page, 'action_debug.html', 'Like button not found')
@@ -358,6 +422,9 @@ class LinkedInBrowser:
         except (PWError, PWTimeout):
             pass
         raise ActionUncertain('Like was clicked but the new state could not be confirmed')
+    def like_post(self, url, post=None):
+        page = self._open_post(url, post)
+        return self._like(page, self._scope(page))
     def _guard_limit(self, page, pattern, kind, msg):
         try:
             hit = page.get_by_text(re.compile(pattern, re.I)).locator('visible=true').count() > 0
@@ -382,9 +449,10 @@ class LinkedInBrowser:
             page.wait_for_timeout(random.randint(1200, 1800))
         else:
             return None
-        name = re.sub('^Invite\\s+|\\s+to connect.*$', '', btn.get_attribute('aria-label') or '').strip()
+        name = 'someone'
         try:
             el = btn.element_handle()
+            name = re.sub('^Invite\\s+|\\s+to connect.*$', '', el.get_attribute('aria-label') or '').strip() or el.evaluate(CONNECT_NAME_JS) or name
             el.scroll_into_view_if_needed()
             page.wait_for_timeout(random.randint(200, 500))
             el.click()
@@ -394,7 +462,7 @@ class LinkedInBrowser:
             if send.count():
                 send.click()
                 page.wait_for_timeout(700)
-            if el.is_connected() and 'to connect' in (el.get_attribute('aria-label') or ''):
+            if el.evaluate(CONNECT_LEFT_JS):
                 el.evaluate("e => e.setAttribute('data-skip', '1')")
                 page.keyboard.press('Escape')
                 raise TemporaryError(f'Connect button for {name} did not change after the click')
@@ -412,9 +480,14 @@ class LinkedInBrowser:
             return snippet in _norm(page.inner_text('body')) and not any(snippet in _norm(e.inner_text()) for e in page.locator(SEL_EDITOR[-1]).all())
         except (PWError, PWTimeout):
             return False
-    def post_comment(self, url, text, post=None):
+    def post_comment(self, url, text, post=None, on_like=None):
         page = self._open_post(url, post)
         update = self._scope(page)
+        if on_like:
+            try:
+                on_like(self._like(page, update))
+            except (TemporaryError, ActionUncertain, PWError, PWTimeout) as e:
+                log.warning('Like before comment skipped: %s', e)
         try:
             editor = self._first_visible(update, SEL_EDITOR)
             if editor is None:

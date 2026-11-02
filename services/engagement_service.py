@@ -1,4 +1,5 @@
 import logging
+import time
 from database import db, models
 from .errors import ActionUncertain, Deferred, PermanentError, TemporaryError
 log = logging.getLogger('linkedin.engagement')
@@ -54,6 +55,11 @@ def run_like(job, post, browser, s):
     models.update_post(pid, like_status='liked', liked_at=models.now_iso(), last_error=None, retry_count=0, next_retry_at=None, verification_status='confirmed')
     models.add_action(pid, 'like', 'success', 'already liked' if result == 'already_liked' else 'liked')
     log.info('Post liked (%s)', result, extra={'post_id': pid})
+def _mark_liked(pid, result):
+    models.update_post(pid, like_status='liked', liked_at=models.now_iso())
+    models.add_action(pid, 'like', 'success', 'already liked' if result == 'already_liked' else 'liked with comment')
+    models.set_meta('last_like_at', repr(time.time()))
+    log.info('Post liked with comment (%s)', result, extra={'post_id': pid})
 def run_comment(job, post, browser, s):
     pid = post['id']
     if post['comment_status'] == 'published' or models.has_success(pid, 'comment'):
@@ -80,8 +86,9 @@ def run_comment(job, post, browser, s):
     if wait > 0:
         raise Deferred(wait, 'global comment cooldown')
     models.update_post(pid, comment_status='publishing', comment_attempts=post['comment_attempts'] + 1, comment_attempt_at=models.now_iso())
+    like = (lambda r: _mark_liked(pid, r)) if s['like_enabled'] and post['like_status'] not in ('liked', 'verification_required') and (not models.has_success(pid, 'like')) and models.daily_wait('like', s['daily_like_limit']) == 0 else None
     try:
-        browser.post_comment(post['url'], text, post)
+        browser.post_comment(post['url'], text, post, like)
     except ActionUncertain as e:
         models.update_post(pid, comment_status='verification_required', verification_status='pending_verification', last_error=str(e)[:500])
         models.add_action(pid, 'comment', 'uncertain', str(e))

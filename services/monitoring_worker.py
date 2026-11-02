@@ -6,29 +6,39 @@ import logging_setup
 from database import models
 from . import comment_service, engagement_service, health_service, ollama_service, post_collector, retry_service
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, LimitReached, PermanentError, ServiceUnavailable, TemporaryError
-from .linkedin_browser import FEED_URL, LinkedInBrowser
+from .linkedin_browser import FEED_URL, BrowserHost, LinkedInBrowser
 log = logging.getLogger('linkedin.worker')
 runtime = health_service.runtime
 class LeaseHeld(Exception):
     pass
+class Lane:
+    def __init__(self, name, browser, run):
+        self.name = name
+        self.browser = browser
+        self.run = run
+        self.thread = None
+        self.ok = False
+        self.fail = 0
+        self.retry_at = 0.0
+        self.force = False
 class MonitoringWorker:
     def __init__(self, cfg):
         self.cfg = cfg
         self.stop_evt = threading.Event()
+        self.lane_stop = threading.Event()
         self.thread = None
         self.owner = uuid.uuid4().hex
-        self.browser = None
+        self.host = BrowserHost(cfg)
+        self.lanes = [Lane('feed', LinkedInBrowser(cfg, self.host), self._feed), Lane('like', LinkedInBrowser(cfg, self.host), self._work), Lane('comment', LinkedInBrowser(cfg, self.host), self._work), Lane('connect', LinkedInBrowser(cfg, self.host), self._connect), Lane('ai', None, self._work)]
+        self.errors = {}
         self.next_poll = 0.0
         self.next_auth_check = 0.0
         self.next_ai_check = 0.0
         self.next_prune = 0.0
         self.next_connect = 0.0
-        self.browser_fail = 0
-        self.browser_retry_at = 0.0
-        self.force_restart = False
+        self.restart_host = False
         self.ai_streak = 0
         self.ai_pause_until = 0.0
-        self.browser_ok = False
         self.scroll_until = 0.0
         self.scroll_fresh = False
         self.start_lock = threading.Lock()
@@ -46,8 +56,9 @@ class MonitoringWorker:
     def alive(self):
         return bool(self.thread and self.thread.is_alive())
     def request_browser_restart(self):
-        self.force_restart = True
-        self.browser_retry_at = 0.0
+        self.restart_host = True
+        for lane in self.lanes:
+            lane.retry_at = 0.0
     def poll_now(self):
         self.next_poll = 0.0
     def toggle_autoscroll(self):
@@ -85,7 +96,8 @@ class MonitoringWorker:
             raise LeaseHeld()
         try:
             retry_service.recover_interrupted()
-            self.browser = LinkedInBrowser(self.cfg)
+            self.lane_stop = threading.Event()
+            self.errors.clear()
             log.info('Monitoring worker started')
             while not self.stop_evt.is_set():
                 self._tick()
@@ -93,9 +105,13 @@ class MonitoringWorker:
         finally:
             self._shutdown()
     def _shutdown(self):
+        self.lane_stop.set()
+        end = time.time() + 30
+        for lane in self.lanes:
+            if lane.thread and lane.thread.is_alive():
+                lane.thread.join(max(0.1, end - time.time()))
         try:
-            if self.browser:
-                self.browser.stop()
+            self.host.stop()
         except Exception:
             pass
         try:
@@ -115,29 +131,27 @@ class MonitoringWorker:
         s = models.all_settings()
         logging_setup.set_level(s['log_level'])
         models.renew_lease(self.owner)
-        paused = not s['monitoring_enabled']
-        runtime.set(monitor_state='paused' if paused else 'running')
-        ready = self._safe(self._ensure_browser, False)
-        self.browser_ok = bool(ready)
+        runtime.set(monitor_state='paused' if not s['monitoring_enabled'] else 'running')
         self._safe(self._check_ai, None, s)
-        now = time.time()
-        scrolling = now < self.scroll_until
-        if self.scroll_until and not scrolling:
-            self.scroll_until = 0.0
-            runtime.set(autoscroll_until=None)
-        if scrolling and ready:
-            self._safe(self._autoscroll, None, s)
-        if not scrolling and not paused and now >= self.next_poll:
-            if ready and (not (s['poll_backlog_limit'] and models.ai_backlog() > s['poll_backlog_limit'])):
-                self.next_poll = now + s['poll_interval']
-                runtime.set(next_poll_at=models.iso_in(s['poll_interval']))
-                self._safe(self._poll, None, s)
-            else:
-                self.next_poll = now + 30
-        self._safe(self._process_jobs, None, s)
-        if not scrolling:
-            self._safe(self._connect, None, s)
         self._safe(self._maintenance, None)
+        for lane in self.lanes:
+            if not (lane.thread and lane.thread.is_alive()):
+                lane.thread = threading.Thread(target=self._lane_loop, args=(lane, self.lane_stop), name=f'lane-{lane.name}', daemon=True)
+                lane.thread.start()
+    def _lane_loop(self, lane, stop):
+        try:
+            while not stop.is_set():
+                s = self._safe(models.all_settings, None)
+                if s:
+                    lane.ok = lane.browser is None
+                    if lane.browser is not None and (lane.name == 'feed' or s[lane.name + '_enabled'] or lane.browser.started):
+                        lane.ok = bool(self._safe(self._ensure, False, lane))
+                    self._safe(lane.run, None, lane, s)
+                stop.wait(2)
+        finally:
+            lane.ok = False
+            if lane.browser is not None:
+                lane.browser.stop()
     def _check_ai(self, s):
         if time.time() >= self.next_ai_check:
             self.next_ai_check = time.time() + 30
@@ -147,27 +161,39 @@ class MonitoringWorker:
         if time.time() >= self.next_prune:
             self.next_prune = time.time() + 3600
             models.prune_events(30)
-    def _ensure_browser(self):
+    def _browser_state(self):
+        errs = list(self.errors.values())
+        runtime.set(browser_status='error' if errs else 'running', browser_error='; '.join(errs)[:300] if errs else None)
+    def _ensure(self, lane):
         now = time.time()
-        if now < self.browser_retry_at:
-            return runtime.get('auth_status') == 'ok' and runtime.get('browser_status') == 'running'
-        b = self.browser
+        if now < lane.retry_at:
+            return False
+        b = lane.browser
+        feed = lane.name == 'feed'
         try:
-            if self.force_restart:
-                self.force_restart = False
+            if feed and self.restart_host:
+                self.restart_host = False
+                self.host.restart()
+            if lane.force or (b.started and b.stale()):
+                lane.force = False
                 b.restart()
-                runtime.set(auth_status='unknown')
-                self.next_auth_check = 0.0
+                started = True
             elif not b.started:
                 b.start()
+                started = True
             elif not b.is_alive():
-                log.warning('Browser is not responding; restarting')
+                log.warning('Browser for %s is not responding; restarting', lane.name)
                 b.restart()
+                started = True
+            else:
+                started = False
+            if feed and started:
                 runtime.set(auth_status='unknown')
                 self.next_auth_check = 0.0
-            runtime.set(browser_status='running', browser_error=None)
-            self.browser_fail = 0
-            if runtime.get('auth_status') != 'ok' and now >= self.next_auth_check:
+            lane.fail = 0
+            self.errors.pop(lane.name, None)
+            self._browser_state()
+            if feed and runtime.get('auth_status') != 'ok' and now >= self.next_auth_check:
                 self.next_auth_check = now + 60
                 try:
                     status, msg = b.check_session()
@@ -183,17 +209,35 @@ class MonitoringWorker:
                     log.warning('%s', msg)
             return runtime.get('auth_status') == 'ok'
         except BrowserUnavailable as e:
-            self.browser_fail += 1
-            delay = min(900, 30 * 2 ** min(self.browser_fail - 1, 5))
-            self.browser_retry_at = now + delay
-            runtime.set(browser_status='error', browser_error=str(e), auth_status='unknown')
-            log.error('Browser unavailable (retry in %ds): %s', delay, e)
+            lane.fail += 1
+            delay = min(900, 30 * 2 ** min(lane.fail - 1, 5))
+            lane.retry_at = now + delay
+            self.errors[lane.name] = f'{lane.name}: {e}'
+            self._browser_state()
+            if feed:
+                runtime.set(auth_status='unknown')
+            log.error('Browser unavailable for %s (retry in %ds): %s', lane.name, delay, e)
             return False
-    def _poll(self, s):
+    def _feed(self, lane, s):
+        now = time.time()
+        scrolling = now < self.scroll_until
+        if self.scroll_until and not scrolling:
+            self.scroll_until = 0.0
+            runtime.set(autoscroll_until=None)
+        if scrolling and lane.ok:
+            self._safe(self._autoscroll, None, lane, s)
+        if not scrolling and s['monitoring_enabled'] and now >= self.next_poll:
+            if lane.ok and (not (s['poll_backlog_limit'] and models.ai_backlog() > s['poll_backlog_limit'])):
+                self.next_poll = now + s['poll_interval']
+                runtime.set(next_poll_at=models.iso_in(s['poll_interval']))
+                self._safe(self._poll, None, lane, s)
+            else:
+                self.next_poll = now + 30
+    def _poll(self, lane, s):
         initial = models.get_meta('initial_done') != '1'
         log.info('Poll started')
         try:
-            posts = post_collector.collect(self.browser, deep=initial, lookback_days=s['lookback_days'])
+            posts = post_collector.collect(lane.browser, deep=initial, lookback_days=s['lookback_days'])
         except AuthRequired as e:
             runtime.set(auth_status='auth_required', auth_message=str(e))
             self.next_auth_check = time.time() + 60
@@ -201,7 +245,7 @@ class MonitoringWorker:
             return
         except BrowserUnavailable as e:
             log.error('Browser failure during polling: %s', e)
-            self.force_restart = True
+            lane.force = True
             return
         except TemporaryError as e:
             log.warning('Polling failed: %s', e)
@@ -227,8 +271,8 @@ class MonitoringWorker:
         self.scroll_until = 0.0
         runtime.set(autoscroll_until=None)
         log.warning('Auto scroll stopped: %s', e)
-    def _autoscroll(self, s):
-        b = self.browser
+    def _autoscroll(self, lane, s):
+        b = lane.browser
         try:
             page = b._get_page()
             if self.scroll_fresh or not page.url.startswith(FEED_URL):
@@ -242,7 +286,7 @@ class MonitoringWorker:
             self._end_scroll(e)
             return
         except BrowserUnavailable as e:
-            self.force_restart = True
+            lane.force = True
             self._end_scroll(e)
             return
         except TemporaryError as e:
@@ -251,32 +295,25 @@ class MonitoringWorker:
         new = self._store(posts, s)
         if new:
             log.info('Auto scroll: %d seen, %d new', len(posts), new)
-    def _process_jobs(self, s):
-        kinds = []
-        if time.time() >= self.ai_pause_until:
-            kinds.append('ai')
-        if self.browser_ok:
-            kinds += [k for k in ('like', 'comment') if s[k + '_enabled']]
-        for job in models.claim_due_jobs(s['batch_size'], kinds):
-            if self.stop_evt.is_set():
+    def _work(self, lane, s):
+        kind = lane.name
+        ai = kind == 'ai'
+        if (ai and time.time() < self.ai_pause_until) or (not ai and not (lane.ok and s[kind + '_enabled'])):
+            return
+        for job in models.claim_due_jobs(s['batch_size'], [kind]):
+            if self.stop_evt.is_set() or self.lane_stop.is_set() or (ai and time.time() < self.ai_pause_until) or (not ai and not lane.ok):
                 models.release_job(job['id'])
                 continue
-            if job['kind'] == 'ai' and time.time() < self.ai_pause_until:
-                models.release_job(job['id'])
-                continue
-            if job['kind'] != 'ai' and (not self.browser_ok):
-                models.release_job(job['id'])
-                continue
-            self._run_job(job, s)
-    def _connect(self, s):
-        if not (s['connect_enabled'] and self.browser_ok) or time.time() < self.next_connect:
+            self._run_job(job, s, lane)
+    def _connect(self, lane, s):
+        if not (s['connect_enabled'] and lane.ok) or time.time() < self.next_connect:
             return
         wait = models.connect_wait(s['daily_connect_limit'])
         self.next_connect = time.time() + (min(wait, 600) if wait > 0 else s['connect_gap'])
         if wait > 0:
             return
         try:
-            name = self.browser.connect_next()
+            name = lane.browser.connect_next()
         except LimitReached as e:
             models.set_settings({'connect_enabled': False})
             log.warning('%s', e)
@@ -287,7 +324,7 @@ class MonitoringWorker:
             log.warning('Connecting paused: %s', e)
             return
         except BrowserUnavailable as e:
-            self.force_restart = True
+            lane.force = True
             log.error('Browser failure while connecting: %s', e)
             return
         except TemporaryError as e:
@@ -300,7 +337,7 @@ class MonitoringWorker:
         models.add_connection(name)
         self.next_connect = time.time() + s['connect_gap']
         log.info('Connection request sent to "%s"', name)
-    def _run_job(self, job, s):
+    def _run_job(self, job, s, lane):
         post = models.get_post(job['post_id'])
         if not post:
             models.finish_job(job['id'], 'cancelled')
@@ -312,20 +349,20 @@ class MonitoringWorker:
                 self.ai_streak = 0
                 runtime.set(ai_status='up', ai_message='OK')
             elif kind == 'like':
-                engagement_service.run_like(job, post, self.browser, s)
+                engagement_service.run_like(job, post, lane.browser, s)
             else:
-                engagement_service.run_comment(job, post, self.browser, s)
+                engagement_service.run_comment(job, post, lane.browser, s)
             models.finish_job(job['id'], 'done')
         except Deferred as d:
             retry_service.defer(job, d.seconds, d.reason)
         except AuthRequired as e:
-            self.browser_ok = False
+            lane.ok = False
             runtime.set(auth_status='auth_required', auth_message=str(e))
             self.next_auth_check = 0.0
             retry_service.defer(job, 60, str(e), True)
         except BrowserUnavailable as e:
-            self.browser_ok = False
-            self.force_restart = True
+            lane.ok = False
+            lane.force = True
             runtime.set(browser_error=str(e))
             retry_service.defer(job, 60, str(e), True)
         except ServiceUnavailable as e:
