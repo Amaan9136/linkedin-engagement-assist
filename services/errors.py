@@ -14,6 +14,10 @@ class AuthRequired(AppError):
     pass
 class ActionUncertain(AppError):
     pass
+class LimitReached(AppError):
+    def __init__(self, kind, msg=''):
+        super().__init__(msg)
+        self.kind = kind
 class Deferred(AppError):
     def __init__(self, seconds, reason=''):
         super().__init__(reason)

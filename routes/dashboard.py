@@ -30,4 +30,4 @@ def stats():
     worker = current_app.extensions['worker']
     snap = runtime.snapshot()
     snap['worker_alive'] = worker.alive()
-    return ok(stats=models.stats(), status=snap, config={'poll_interval': s['poll_interval'], 'publishing_mode': s['publishing_mode'], 'monitoring_enabled': s['monitoring_enabled'], 'auto_ai': s['auto_ai'], 'timezone': s['timezone'], 'daily_like_limit': s['daily_like_limit'], 'daily_comment_limit': s['daily_comment_limit']})
+    return ok(stats=models.stats(), status=snap, config={'poll_interval': s['poll_interval'], 'publishing_mode': s['publishing_mode'], 'monitoring_enabled': s['monitoring_enabled'], 'auto_ai': s['auto_ai'], 'timezone': s['timezone'], 'daily_like_limit': s['daily_like_limit'], 'daily_comment_limit': s['daily_comment_limit'], 'daily_connect_limit': s['daily_connect_limit'], 'like_enabled': s['like_enabled'], 'comment_enabled': s['comment_enabled'], 'connect_enabled': s['connect_enabled']})

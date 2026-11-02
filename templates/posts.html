@@ -4,6 +4,11 @@
 <section class="panel">
 <h2>Posts</h2>
 <p class="hint">Every post found in your feed. Write drafts, like, comment or skip them here.</p>
+<div class="switches">
+{% include '_switches.html' %}
+<button class="sw" id="btn-autoai" title="When on, the AI writes a draft for every new post. When off, you ask for drafts yourself.">Auto-write drafts</button>
+<button class="sw" id="btn-autoscroll" title="Scrolls your LinkedIn feed for 3 minutes to collect more posts. Click again to stop.">Collect more posts</button>
+</div>
 <div class="toolbar">
 <select id="filter" title="Choose which posts to show.">
 <option value="all" data-hint="Every post collected from your feed.">All posts</option>
@@ -27,12 +32,12 @@
 </select>
 <input id="search" type="search" placeholder="Search by author, text or draft" title="Type to filter posts as you type.">
 <button class="btn" id="btn-refresh" title="Reload the list now.">Refresh</button>
-<button class="btn" id="btn-autoai" title="When on, the AI writes a draft for every new post. When off, you ask for drafts yourself.">Auto-write drafts</button>
-<button class="btn" id="btn-autoscroll" title="Scrolls your LinkedIn feed for 3 minutes to collect more posts. Click again to stop.">Collect more posts</button>
 </div>
 <p id="filter-hint" class="hint"></p>
 <div class="toolbar bulk">
-<label class="check"><input type="checkbox" id="select-all"> Select all</label>
+<button class="btn btn-sm" id="select-page" title="Select every post on this page.">Select page (30)</button>
+<button class="btn btn-sm" id="select-all" title="Select every post that matches the current filters, on all pages.">Select all</button>
+<button class="btn btn-sm" id="select-none" title="Clear the selection.">Clear</button>
 <select id="bulk-action" title="Choose what to do with the selected posts.">
 <option value="">Choose an action…</option>
 <option value="generate" data-hint="Write AI drafts for the selected posts.">Write drafts</option>

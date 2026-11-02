@@ -11,11 +11,16 @@ def list_posts():
     sort = request.args.get('sort', 'recent')
     try:
         page = max(1, int(request.args.get('page', 1)))
-        per = min(100, max(5, int(request.args.get('per_page', 25))))
+        per = min(100, max(5, int(request.args.get('per_page', 30))))
     except ValueError:
         return fail('Invalid pagination')
     rows, total = models.list_posts(flt, q, per, (page - 1) * per, sort)
     return ok(posts=[models.post_to_dict(r) for r in rows], total=total, page=page, per_page=per)
+@bp.get('/api/posts/ids')
+@api
+def post_ids():
+    ids = models.post_ids(request.args.get('filter', 'all'), request.args.get('q', '').strip()[:100])
+    return ok(ids=ids, message=f'{len(ids)} post(s) selected')
 @bp.get('/api/posts/<int:pid>')
 @api
 def get_post(pid):

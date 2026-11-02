@@ -2,8 +2,15 @@
 {% block title %}Dashboard · LinkedIn Engagement Assistant{% endblock %}
 {% block content %}
 <section class="panel">
+<h2>Automation controls</h2>
+<p class="hint">Pause or resume each part on its own. Work already in the queue is kept.</p>
+<div class="switches">
+{% include '_switches.html' %}
+</div>
+</section>
+<section class="panel">
 <h2>Assistant status</h2>
-<p class="hint">Check that everything is working. Use the buttons to pause, resume or restart parts of the assistant.</p>
+<p class="hint">Check that everything is working. Use the buttons to check the feed now or restart the browser.</p>
 <div class="status-grid">
 <div><span class="label">Feed checking</span><span class="hint">Whether the assistant is looking for new posts.</span><strong id="st-monitor">–</strong></div>
 <div><span class="label">Browser</span><span class="hint">The background browser that works on LinkedIn.</span><strong id="st-browser">–</strong></div>
@@ -14,8 +21,6 @@
 </div>
 <p id="st-msg" class="muted"></p>
 <div class="actions">
-<button class="btn" id="btn-pause" title="Stop looking for new posts. Work already in the queue is kept.">Pause feed checking</button>
-<button class="btn" id="btn-resume" title="Start looking for new posts again.">Resume feed checking</button>
 <button class="btn" id="btn-poll" title="Look for new posts right now.">Check feed now</button>
 <button class="btn" id="btn-browser" title="Close and reopen the background browser. Use this if something seems stuck.">Restart browser</button>
 </div>
@@ -24,11 +29,13 @@
 <section class="cards">
 <div class="card"><span class="label">Likes in the last 24 hours</span><span class="hint">Liking pauses at your daily limit to protect your account.</span><strong><span data-stat="likes_24h">0</span><small data-limit="daily_like_limit"></small></strong><div class="meter"><i id="m-likes"></i></div></div>
 <div class="card"><span class="label">Comments in the last 24 hours</span><span class="hint">Commenting pauses at your daily limit to protect your account.</span><strong><span data-stat="comments_24h">0</span><small data-limit="daily_comment_limit"></small></strong><div class="meter"><i id="m-comments"></i></div></div>
+<div class="card"><span class="label">Connections in the last 24 hours</span><span class="hint">Connecting pauses at your daily limit to protect your account.</span><strong><span data-stat="connects_24h">0</span><small data-limit="daily_connect_limit"></small></strong><div class="meter"><i id="m-connects"></i></div></div>
 </section>
 <p class="hint">You can change these limits on the <a href="/settings">Settings</a> page under Daily limits and pacing.</p>
 <h3 class="section-title">Your posts</h3>
 <section class="cards">
 <div class="card"><span class="label">Posts found</span><span class="hint">All posts collected from your feed.</span><strong data-stat="posts_total">0</strong></div>
+<div class="card"><span class="label">Posts found in 24 hours</span><span class="hint">Posts collected from your feed in the last 24 hours.</span><strong data-stat="posts_24h">0</strong></div>
 <div class="card"><span class="label">Waiting for a draft</span><span class="hint">Posts the AI has not written a comment for yet.</span><strong data-stat="pending_ai">0</strong></div>
 <div class="card"><span class="label">Drafts ready</span><span class="hint">Comments written but not posted yet.</span><strong data-stat="drafts">0</strong></div>
 <div class="card"><span class="label">Comments posted</span><span class="hint">Comments successfully posted on LinkedIn.</span><strong data-stat="comments_published">0</strong></div>

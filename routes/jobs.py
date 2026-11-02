@@ -26,12 +26,17 @@ def list_queue():
     sort = request.args.get('sort', 'next')
     try:
         page = max(1, int(request.args.get('page', 1)))
-        per = min(100, max(5, int(request.args.get('per_page', 25))))
+        per = min(100, max(5, int(request.args.get('per_page', 30))))
     except ValueError:
         return fail('Invalid pagination')
     rows, total = models.list_jobs(status, kind, q, per, (page - 1) * per, sort)
     s = models.all_settings()
     return ok(jobs=rows, total=total, page=page, per_page=per, counts=models.queue_counts(), max_queue=s['max_queue'], usage={'like': models.daily_used('like'), 'comment': models.daily_used('comment')}, limits={'like': s['daily_like_limit'], 'comment': s['daily_comment_limit']})
+@bp.get('/api/queue/ids')
+@api
+def queue_ids():
+    ids = models.job_ids(request.args.get('status', 'active'), request.args.get('kind', 'all'), request.args.get('q', '').strip()[:100])
+    return ok(ids=ids, message=f'{len(ids)} job(s) selected')
 @bp.post('/api/queue/bulk')
 @api
 def bulk():

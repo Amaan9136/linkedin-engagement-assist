@@ -97,7 +97,18 @@ table.logs td.msg{word-break:break-word;min-width:240px}
 .login-card h1{font-size:1.15rem;margin:0}
 .login-card label{font-size:.8rem;font-weight:600}
 .error{color:var(--bad);margin:0;font-size:.8rem}
+.switches{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.sw{font:inherit;font-size:.82rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:#f3f5f9;color:var(--muted);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.sw::before{content:'';width:9px;height:9px;border-radius:50%;background:#8c98aa}
+.sw:hover{background:#fff;border-color:#8493a8}
+.sw:focus-visible{outline:2px solid #5aa2ff;outline-offset:1px}
+.sw small{font-size:.72rem;font-weight:500}
+.sw.on{background:#cfe8da;border-color:#8fc4a5;color:var(--ok)}
+.sw.on::before{background:var(--ok)}
+.sw.off{background:#f3e3b9;border-color:#d9bf7c;color:var(--warn)}
+.sw.off::before{background:#c98a10}
 @media(max-width:600px){
+.switches .sw{flex:1 1 calc(50% - 8px);justify-content:center}
 .post{grid-template-columns:1fr}
 .topbar{padding:8px 10px;gap:8px}
 .brand{flex:1 1 0;min-width:0;font-size:.85rem}

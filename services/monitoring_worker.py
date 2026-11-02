@@ -5,7 +5,7 @@ import uuid
 import logging_setup
 from database import models
 from . import comment_service, engagement_service, health_service, ollama_service, post_collector, retry_service
-from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, PermanentError, ServiceUnavailable, TemporaryError
+from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, LimitReached, PermanentError, ServiceUnavailable, TemporaryError
 from .linkedin_browser import FEED_URL, LinkedInBrowser
 log = logging.getLogger('linkedin.worker')
 runtime = health_service.runtime
@@ -22,6 +22,7 @@ class MonitoringWorker:
         self.next_auth_check = 0.0
         self.next_ai_check = 0.0
         self.next_prune = 0.0
+        self.next_connect = 0.0
         self.browser_fail = 0
         self.browser_retry_at = 0.0
         self.force_restart = False
@@ -134,6 +135,8 @@ class MonitoringWorker:
             else:
                 self.next_poll = now + 30
         self._safe(self._process_jobs, None, s)
+        if not scrolling:
+            self._safe(self._connect, None, s)
         self._safe(self._maintenance, None)
     def _check_ai(self, s):
         if time.time() >= self.next_ai_check:
@@ -253,7 +256,7 @@ class MonitoringWorker:
         if time.time() >= self.ai_pause_until:
             kinds.append('ai')
         if self.browser_ok:
-            kinds += ['like', 'comment']
+            kinds += [k for k in ('like', 'comment') if s[k + '_enabled']]
         for job in models.claim_due_jobs(s['batch_size'], kinds):
             if self.stop_evt.is_set():
                 models.release_job(job['id'])
@@ -265,6 +268,38 @@ class MonitoringWorker:
                 models.release_job(job['id'])
                 continue
             self._run_job(job, s)
+    def _connect(self, s):
+        if not (s['connect_enabled'] and self.browser_ok) or time.time() < self.next_connect:
+            return
+        wait = models.connect_wait(s['daily_connect_limit'])
+        self.next_connect = time.time() + (min(wait, 600) if wait > 0 else s['connect_gap'])
+        if wait > 0:
+            return
+        try:
+            name = self.browser.connect_next()
+        except LimitReached as e:
+            models.set_settings({'connect_enabled': False})
+            log.warning('%s', e)
+            return
+        except AuthRequired as e:
+            runtime.set(auth_status='auth_required', auth_message=str(e))
+            self.next_auth_check = time.time() + 60
+            log.warning('Connecting paused: %s', e)
+            return
+        except BrowserUnavailable as e:
+            self.force_restart = True
+            log.error('Browser failure while connecting: %s', e)
+            return
+        except TemporaryError as e:
+            log.warning('Connection request failed: %s', e)
+            return
+        if name is None:
+            self.next_connect = time.time() + 600
+            log.warning('No Connect buttons found on My Network; trying again in 10 minutes')
+            return
+        models.add_connection(name)
+        self.next_connect = time.time() + s['connect_gap']
+        log.info('Connection request sent to "%s"', name)
     def _run_job(self, job, s):
         post = models.get_post(job['post_id'])
         if not post:
@@ -300,6 +335,10 @@ class MonitoringWorker:
             runtime.set(ai_status='down', ai_message=str(e)[:200])
             log.warning('AI service unavailable; pausing AI jobs for %ds: %s', pause, e)
             retry_service.defer(job, pause, str(e), True)
+        except LimitReached as e:
+            models.set_settings({e.kind + '_enabled': False})
+            log.warning('%s', e, extra={'post_id': job['post_id']})
+            retry_service.defer(job, 3600, str(e), True)
         except TemporaryError as e:
             retry_service.handle_temporary(job, e, s)
         except PermanentError as e:

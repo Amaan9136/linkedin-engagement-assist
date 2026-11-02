@@ -4,7 +4,7 @@ import re
 import subprocess
 import sys
 from urllib.parse import unquote
-from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, PermanentError, TemporaryError
+from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, LimitReached, PermanentError, TemporaryError
 try:
     from playwright.sync_api import Error as PWError
     from playwright.sync_api import TimeoutError as PWTimeout
@@ -15,6 +15,8 @@ except ImportError:
         pass
 log = logging.getLogger('linkedin.browser')
 FEED_URL = 'https://www.linkedin.com/feed/'
+GROW_URL = 'https://www.linkedin.com/mynetwork/grow/'
+LIMIT_MSG = 'Commenting terminated: LinkedIn daily comment limit reached. Resume it from the dashboard when the limit resets'
 AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
 SEL_NAV = "#global-nav, nav.global-nav, header.global-nav, header[role='banner'], nav[aria-label*='Primary'], [data-view-name^='navigation'], [data-testid='primary-nav']"
@@ -25,6 +27,8 @@ SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
 SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
+SEL_CONNECT = "button[aria-label*='Invite'][aria-label*='to connect']:not([data-skip]):visible"
+SEL_SEND_NOTE = "button[aria-label='Send without a note'], button:has-text('Send without a note')"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
 def _norm(s):
     return re.sub('\\s+', ' ', s or '').strip().lower()
@@ -354,6 +358,49 @@ class LinkedInBrowser:
         except (PWError, PWTimeout):
             pass
         raise ActionUncertain('Like was clicked but the new state could not be confirmed')
+    def _guard_limit(self, page, pattern, kind, msg):
+        try:
+            hit = page.get_by_text(re.compile(pattern, re.I)).locator('visible=true').count() > 0
+        except (PWError, PWTimeout):
+            return
+        if hit:
+            page.keyboard.press('Escape')
+            raise LimitReached(kind, msg)
+    def connect_next(self):
+        page = self._get_page()
+        if not page.url.startswith(GROW_URL):
+            page = self.goto(GROW_URL)
+            try:
+                page.wait_for_selector(SEL_CONNECT, timeout=10000)
+            except PWTimeout:
+                pass
+        for _ in range(4):
+            btn = page.locator(SEL_CONNECT).first
+            if btn.count():
+                break
+            page.mouse.wheel(0, random.randint(700, 1000))
+            page.wait_for_timeout(random.randint(1200, 1800))
+        else:
+            return None
+        name = re.sub('^Invite\\s+|\\s+to connect.*$', '', btn.get_attribute('aria-label') or '').strip()
+        try:
+            el = btn.element_handle()
+            el.scroll_into_view_if_needed()
+            page.wait_for_timeout(random.randint(200, 500))
+            el.click()
+            page.wait_for_timeout(900)
+            self._guard_limit(page, 'invitation limit', 'connect', 'Connections terminated: LinkedIn invitation limit reached. Resume them from the dashboard later')
+            send = page.locator(SEL_SEND_NOTE).first
+            if send.count():
+                send.click()
+                page.wait_for_timeout(700)
+            if el.is_connected() and 'to connect' in (el.get_attribute('aria-label') or ''):
+                el.evaluate("e => e.setAttribute('data-skip', '1')")
+                page.keyboard.press('Escape')
+                raise TemporaryError(f'Connect button for {name} did not change after the click')
+        except (PWError, PWTimeout) as e:
+            raise TemporaryError('Could not send the connection request: ' + str(e).splitlines()[0]) from e
+        return name
     def _comment_visible(self, page, text):
         snippet = _norm(text)[:50]
         loc = page.locator(SEL_COMMENTS)
@@ -386,6 +433,7 @@ class LinkedInBrowser:
             submit = None
             for _ in range(8):
                 page.wait_for_timeout(400)
+                self._guard_limit(page, 'daily comment limit', 'comment', LIMIT_MSG)
                 submit = self._first_visible(update, SEL_SUBMIT) or self._first_visible(page, SEL_SUBMIT)
                 if submit is not None:
                     break
@@ -404,8 +452,11 @@ class LinkedInBrowser:
             submit.click()
             for _ in range(5):
                 page.wait_for_timeout(1500)
+                self._guard_limit(page, 'daily comment limit', 'comment', LIMIT_MSG)
                 if self._comment_visible(page, text):
                     return True
+        except LimitReached:
+            raise
         except Exception as e:
             raise ActionUncertain('Submit was clicked but the result is unknown: ' + str(e).splitlines()[0]) from e
         raise ActionUncertain('Comment was submitted but could not be confirmed on the page')

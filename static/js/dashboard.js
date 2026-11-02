@@ -93,11 +93,12 @@ async function refreshStatus() {
     const pill = $('#health-pill');
     pill.textContent = text;
     pill.className = 'pill pill-' + cls;
+    syncSwitches(d.config);
     try { sessionStorage.setItem('pill', JSON.stringify([text, cls])); } catch (e) {}
     if (page === 'dashboard') {
       document.querySelectorAll('[data-stat]').forEach(n => { n.textContent = d.stats[n.dataset.stat] ?? 0; });
       document.querySelectorAll('[data-limit]').forEach(n => { const l = d.config[n.dataset.limit]; n.textContent = l ? ' / ' + l : ' (no limit)'; });
-      [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
+      [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit'], ['#m-connects', 'connects_24h', 'daily_connect_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
       const s = d.status;
       $('#st-monitor').textContent = nice(s.worker_alive ? s.monitor_state : 'stopped');
       $('#st-browser').textContent = nice(s.browser_status);
@@ -118,10 +119,10 @@ async function refreshStatus() {
     if (page === 'posts') {
       const on = d.status.autoscroll_until && Date.parse(d.status.autoscroll_until) > Date.now();
       $('#btn-autoscroll').textContent = on ? 'Stop collecting' : 'Collect more posts';
-      $('#btn-autoscroll').classList.toggle('btn-primary', !!on);
+      $('#btn-autoscroll').classList.toggle('on', !!on);
       state.autoAi = !!d.config.auto_ai;
       $('#btn-autoai').textContent = 'Auto-write drafts: ' + (state.autoAi ? 'On' : 'Off');
-      $('#btn-autoai').classList.toggle('btn-primary', state.autoAi);
+      $('#btn-autoai').classList.toggle('on', state.autoAi);
     }
   } catch (e) {
     const pill = $('#health-pill');
@@ -129,20 +130,44 @@ async function refreshStatus() {
     pill.className = 'pill pill-bad';
   }
 }
+function syncSwitches(c) {
+  document.querySelectorAll('.sw[data-sw]').forEach(b => {
+    const on = !!c[b.dataset.sw === 'monitoring' ? 'monitoring_enabled' : b.dataset.sw + '_enabled'];
+    b.classList.toggle('on', on);
+    b.classList.toggle('off', !on);
+    b.querySelector('.sw-state').textContent = on ? 'On' : 'Paused';
+  });
+}
+function initSwitches() {
+  document.querySelectorAll('.sw[data-sw]').forEach(b => {
+    b.onclick = () => act(() => api('POST', (b.dataset.sw === 'monitoring' ? '/api/monitor/' : '/api/feature/' + b.dataset.sw + '/') + (b.classList.contains('on') ? 'pause' : 'resume'))).then(refreshStatus);
+  });
+}
+async function bulk(url, action, ids, size) {
+  let done = 0;
+  const errors = [];
+  for (let i = 0; i < ids.length; i += size) {
+    const d = await api('POST', url, {action, ids: ids.slice(i, i + size)});
+    done += d.done;
+    errors.push(...(d.errors || []));
+  }
+  return {done, errors, message: done + ' of ' + ids.length + ' updated'};
+}
 function hint(sel, out) {
   const sync = () => { out.textContent = sel.selectedOptions[0].dataset.hint || ''; };
   sel.addEventListener('change', sync);
   sync();
 }
 function initDashboard() {
-  $('#btn-pause').onclick = () => act(() => api('POST', '/api/monitor/pause')).then(refreshStatus);
-  $('#btn-resume').onclick = () => act(() => api('POST', '/api/monitor/resume')).then(refreshStatus);
   $('#btn-poll').onclick = () => act(() => api('POST', '/api/monitor/poll-now'));
   $('#btn-browser').onclick = () => {
     if (confirm('Restart the browser now?')) act(() => api('POST', '/api/browser/restart'));
   };
 }
-const state = {filter: 'all', sort: 'recent', q: '', page: 1, per: 25, total: 0, selected: new Set()};
+const state = {filter: 'all', sort: 'recent', q: '', page: 1, per: 30, total: 0, selected: new Set()};
+function pCount() {
+  $('#count').textContent = state.total + ' post(s)' + (state.selected.size ? ' · ' + state.selected.size + ' selected' : '');
+}
 function badge(text, cls) {
   return h('span', {class: 'badge ' + (cls || '')}, text);
 }
@@ -153,7 +178,7 @@ function statusClass(v) {
   return '';
 }
 function postCard(p) {
-  const chk = h('input', {type: 'checkbox', onchange: e => { e.target.checked ? state.selected.add(p.id) : state.selected.delete(p.id); }});
+  const chk = h('input', {type: 'checkbox', onchange: e => { e.target.checked ? state.selected.add(p.id) : state.selected.delete(p.id); pCount(); }});
   chk.checked = state.selected.has(p.id);
   const run = (method, path, body, msg) => async () => {
     await act(() => api(method, '/api/posts/' + p.id + path, body), msg);
@@ -195,10 +220,10 @@ async function loadPosts() {
     box.replaceChildren(...(d.posts.length ? d.posts.map(postCard) : [h('p', {class: 'muted'}, 'No posts match these filters.')]));
     const pages = Math.max(1, Math.ceil(d.total / state.per));
     $('#page-info').textContent = 'Page ' + state.page + ' of ' + pages;
-    $('#count').textContent = d.total + ' post(s)';
+    $('#select-page').textContent = 'Select page (' + d.posts.length + ')';
+    pCount();
     $('#prev').disabled = state.page <= 1;
     $('#next').disabled = state.page >= pages;
-    $('#select-all').checked = false;
   } catch (e) {
     toast(e.message, true);
   }
@@ -253,11 +278,21 @@ function initPosts() {
   $('#btn-autoscroll').onclick = () => act(() => api('POST', '/api/monitor/autoscroll')).then(refreshStatus);
   $('#prev').onclick = () => { state.page--; loadPosts(); };
   $('#next').onclick = () => { state.page++; loadPosts(); };
-  $('#select-all').onchange = e => {
-    document.querySelectorAll('#posts .post input[type=checkbox]').forEach((c, i) => {
-      c.checked = e.target.checked;
-      c.dispatchEvent(new Event('change'));
-    });
+  $('#select-page').onclick = () => document.querySelectorAll('#posts .post input[type=checkbox]').forEach(c => {
+    c.checked = true;
+    c.dispatchEvent(new Event('change'));
+  });
+  $('#select-all').onclick = async () => {
+    const d = await act(() => api('GET', '/api/posts/ids?' + new URLSearchParams({filter: state.filter, q: state.q})));
+    if (!d) return;
+    d.ids.forEach(i => state.selected.add(i));
+    document.querySelectorAll('#posts .post input[type=checkbox]').forEach(c => { c.checked = true; });
+    pCount();
+  };
+  $('#select-none').onclick = () => {
+    state.selected.clear();
+    document.querySelectorAll('#posts .post input[type=checkbox]').forEach(c => { c.checked = false; });
+    pCount();
   };
   $('#bulk-run').onclick = async () => {
     const action = $('#bulk-action').value;
@@ -271,7 +306,7 @@ function initPosts() {
     }
     if (action === 'skip' && !confirm('Skip ' + ids.length + ' post(s)?')) return;
     if (action === 'delete' && !confirm('Permanently delete ' + ids.length + ' post(s)? They will not be collected again.')) return;
-    const d = await act(() => api('POST', '/api/posts/bulk', {action, ids}));
+    const d = await act(() => bulk('/api/posts/bulk', action, ids, 200));
     if (d && d.errors && d.errors.length) toast(d.message + '. ' + d.errors[0], true);
     state.selected.clear();
     loadPosts();
@@ -299,7 +334,7 @@ function field(key, spec, value) {
   }
   return h('div', {class: 'field', 'data-key': key}, h('label', {for: id}, spec.label), h('span', {class: 'hint'}, spec.help), input, h('span', {class: 'error'}));
 }
-const GROUPS = [['Feed checking', 'How the assistant looks for new posts.', ['monitoring_enabled', 'poll_interval', 'lookback_days', 'poll_backlog_limit']], ['AI drafts', 'Which AI writes your comment drafts and how it behaves.', ['ai_model', 'ollama_endpoint', 'ai_timeout', 'auto_ai', 'ai_gap', 'ai_hourly_limit', 'comment_style', 'max_comment_length', 'comment_max_age_hours']], ['Publishing', 'What happens automatically and what waits for you.', ['publishing_mode', 'auto_like', 'auto_comment', 'like_max_age_hours']], ['Daily limits and pacing', 'Keeps your activity natural and your LinkedIn account safe.', ['daily_like_limit', 'daily_comment_limit', 'like_gap', 'comment_cooldown', 'post_retry_cooldown']], ['Queue and retries', 'How jobs are processed and tried again when something goes wrong.', ['batch_size', 'max_queue', 'max_retries', 'backoff_base', 'backoff_max']], ['Display and logs', 'How times are shown and how much detail is logged.', ['log_level', 'timezone']]];
+const GROUPS = [['Feed checking', 'How the assistant looks for new posts.', ['monitoring_enabled', 'poll_interval', 'lookback_days', 'poll_backlog_limit']], ['AI drafts', 'Which AI writes your comment drafts and how it behaves.', ['ai_model', 'ollama_endpoint', 'ai_timeout', 'auto_ai', 'ai_gap', 'ai_hourly_limit', 'comment_style', 'max_comment_length', 'comment_max_age_hours']], ['Publishing', 'What happens automatically and what waits for you.', ['publishing_mode', 'like_enabled', 'comment_enabled', 'connect_enabled', 'auto_like', 'auto_comment', 'like_max_age_hours']], ['Daily limits and pacing', 'Keeps your activity natural and your LinkedIn account safe.', ['daily_like_limit', 'daily_comment_limit', 'daily_connect_limit', 'like_gap', 'comment_cooldown', 'connect_gap', 'post_retry_cooldown']], ['Queue and retries', 'How jobs are processed and tried again when something goes wrong.', ['batch_size', 'max_queue', 'max_retries', 'backoff_base', 'backoff_max']], ['Display and logs', 'How times are shown and how much detail is logged.', ['log_level', 'timezone']]];
 async function initSettings() {
   const form = $('#settings-form');
   let specs;
@@ -362,7 +397,7 @@ function initLogs() {
   loadLogs();
   setInterval(loadLogs, 15000);
 }
-const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 25, total: 0, selected: new Set(), sig: ''};
+const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 30, total: 0, selected: new Set(), sig: ''};
 function qCount() {
   $('#count').textContent = qstate.total + ' job(s)' + (qstate.selected.size ? ' · ' + qstate.selected.size + ' selected' : '');
 }
@@ -412,7 +447,7 @@ async function loadQueue(force) {
     $('#page-info').textContent = 'Page ' + qstate.page + ' of ' + pages;
     $('#prev').disabled = qstate.page <= 1;
     $('#next').disabled = qstate.page >= pages;
-    $('#select-all').checked = d.jobs.length > 0 && d.jobs.every(j => qstate.selected.has(j.id));
+    $('#select-page').textContent = 'Select page (' + d.jobs.length + ')';
     qCount();
   } catch (e) {
     toast(e.message, true);
@@ -430,11 +465,21 @@ function initQueue() {
   $('#btn-refresh').onclick = () => loadQueue(true);
   $('#prev').onclick = () => { qstate.page--; loadQueue(true); };
   $('#next').onclick = () => { qstate.page++; loadQueue(true); };
-  $('#select-all').onchange = e => {
-    document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => {
-      c.checked = e.target.checked;
-      c.dispatchEvent(new Event('change'));
-    });
+  $('#select-page').onclick = () => document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => {
+    c.checked = true;
+    c.dispatchEvent(new Event('change'));
+  });
+  $('#select-all').onclick = async () => {
+    const d = await act(() => api('GET', '/api/queue/ids?' + new URLSearchParams({status: qstate.status, kind: qstate.kind, q: qstate.q})));
+    if (!d) return;
+    d.ids.forEach(i => qstate.selected.add(i));
+    document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => { c.checked = true; });
+    qCount();
+  };
+  $('#select-none').onclick = () => {
+    qstate.selected.clear();
+    document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => { c.checked = false; });
+    qCount();
   };
   $('#q-clear').onclick = async () => {
     if (!confirm('Delete every done and cancelled job record?')) return;
@@ -449,7 +494,7 @@ function initQueue() {
     if (!ids.length) return toast('Select at least one job', true);
     if (action === 'cancel' && !confirm('Take ' + ids.length + ' job(s) out of the queue?')) return;
     if (action === 'delete' && !confirm('Delete ' + ids.length + ' job record(s)?')) return;
-    await act(() => api('POST', '/api/queue/bulk', {action, ids}));
+    await act(() => bulk('/api/queue/bulk', action, ids, 500));
     qstate.selected.clear();
     loadQueue(true);
   };
@@ -462,6 +507,7 @@ try {
 } catch (e) {}
 refreshStatus();
 setInterval(refreshStatus, 8000);
+initSwitches();
 if (page === 'dashboard') initDashboard();
 if (page === 'posts') initPosts();
 if (page === 'settings') initSettings();

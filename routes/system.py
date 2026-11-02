@@ -22,6 +22,16 @@ def resume():
     worker.start()
     worker.poll_now()
     return ok(message='Monitoring resumed')
+@bp.post('/api/feature/<name>/<state>')
+@api
+def feature(name, state):
+    label = {'like': 'Likes', 'comment': 'Comments', 'connect': 'Connections'}.get(name)
+    if not label or state not in ('pause', 'resume'):
+        return fail('Unknown control', 404)
+    models.set_settings({name + '_enabled': state == 'resume'})
+    if state == 'resume':
+        current_app.extensions['worker'].start()
+    return ok(message=label + (' resumed' if state == 'resume' else ' paused. Queued work is kept.'))
 @bp.post('/api/monitor/poll-now')
 @api
 def poll_now():

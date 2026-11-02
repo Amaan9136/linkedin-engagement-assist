@@ -8,6 +8,8 @@ Local-first dashboard that monitors your LinkedIn feed with a persistent Playwri
 - **Monitoring:** one worker thread polls the feed every 60 seconds (configurable), scrolls, extracts text-only post data in a single page evaluation, and stores new posts. The first run looks back over the previous seven days. Posts are deduplicated by their stable post ID with the normalized URL as fallback.
 - **AI drafts:** the model only ever receives text: body, title, accessible alt text, link descriptions and author name. Images and videos are never downloaded, stored or sent. Posts without enough meaningful text are marked `skipped_insufficient_text` and are not retried until you reset them.
 - **Engagement:** liking and commenting are tracked independently. Comments follow the publishing mode, a global cooldown (default 60 s, persisted in SQLite) and a per-post retry cooldown.
+- **Auto connect:** when enabled, the worker opens LinkedIn My Network (`/mynetwork/grow/`), clicks Connect on suggested people one by one with a pause between requests (`connect_gap`, default 10 s) and scrolls only when no Connect button is left in view. Capped per rolling 24 hours (`daily_connect_limit`, default 60).
+- **Safeguards:** if LinkedIn shows the daily comment limit popup, commenting stops at once, a warning is logged and the Comments switch turns off until you resume it. Feed checking, likes, comments and connections each have their own pause/resume switch on the Dashboard, Posts and Queue pages.
 - **Reliability:** a persistent job queue in SQLite with exponential backoff, a worker supervisor that restarts after crashes, a database lease that prevents duplicate workers, and startup recovery of interrupted jobs.
 - **Uncertain results:** if a comment submission cannot be confirmed, the post becomes `verification_required`. The next attempt first checks the post for the comment and never blindly resubmits.
 
@@ -25,7 +27,7 @@ Python · [Flask](https://flask.palletsprojects.com) + [Waitress](https://docs.p
 | `mixed` (default) | Automatic when enabled | Drafts wait for your approval and Publish |
 | `automatic` | Automatic when enabled | Published automatically when `auto_comment` is on |
 
-Automatic likes are paced (`like_gap`, default 20 s) and limited to posts newer than `like_max_age_hours` (default 72). Likes and comments are also capped per rolling 24 hours (`daily_like_limit` default 60, `daily_comment_limit` default 30; 0 means no limit). All values are editable on the Settings page without a restart.
+Automatic likes are paced (`like_gap`, default 20 s) and limited to posts newer than `like_max_age_hours` (default 72). Likes and comments are also capped per rolling 24 hours (`daily_like_limit` default 120, `daily_comment_limit` default 60; 0 means no limit). All values are editable on the Settings page without a restart.
 
 ## Setup
 

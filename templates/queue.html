@@ -16,6 +16,9 @@
 <section class="panel">
 <h2>Queue</h2>
 <p class="hint">All AI draft, like and comment jobs, updated live. Select jobs to run, retry, remove or delete them.</p>
+<div class="switches">
+{% include '_switches.html' %}
+</div>
 <div class="toolbar">
 <select id="q-status" title="Choose which jobs to show.">
 <option value="active" data-hint="Jobs that are waiting or running.">Active (waiting + running)</option>
@@ -46,7 +49,9 @@
 </div>
 <p id="filter-hint" class="hint"></p>
 <div class="toolbar bulk">
-<label class="check"><input type="checkbox" id="select-all"> Select all</label>
+<button class="btn btn-sm" id="select-page" title="Select every job on this page.">Select page (30)</button>
+<button class="btn btn-sm" id="select-all" title="Select every job that matches the current filters, on all pages.">Select all</button>
+<button class="btn btn-sm" id="select-none" title="Clear the selection.">Clear</button>
 <select id="bulk-action" title="Choose what to do with the selected jobs.">
 <option value="">Choose an action…</option>
 <option value="run_now" data-hint="Make the selected waiting jobs run as soon as possible.">Run now</option>

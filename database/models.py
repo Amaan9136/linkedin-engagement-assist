@@ -101,7 +101,7 @@ def _filter_clause(name):
     table = {'all': ('1=1', ()), 'feed': ("skipped=0 AND (like_status!='liked' OR comment_status NOT IN ('published','publishing'))", ()), 'recent': ('discovered_at >= ?', (day_ago,)), 'older_unprocessed': ("discovered_at < ? AND skipped=0 AND ai_status IN ('pending','failed')", (day_ago,)), 'pending_ai': ("skipped=0 AND ai_status IN ('pending','generating')", ()), 'drafts': ("comment_status IN ('draft','approved')", ()), 'commented': ("comment_status='published'", ()), 'liked': ("like_status='liked'", ()), 'failed': ("(ai_status='failed' OR comment_status='failed' OR like_status='failed' OR EXISTS (SELECT 1 FROM jobs j WHERE j.post_id=posts.id AND (j.status='failed' OR (j.status='queued' AND j.attempts>0))))", ()), 'skipped': ('skipped=1', ()), 'verification': ("comment_status='verification_required' OR like_status='verification_required'", ())}
     return table.get(name, table['all'])
 SORTS = {'recent': 'discovered_at DESC, id DESC', 'oldest': 'discovered_at ASC, id ASC', 'published_new': 'published_at DESC, id DESC', 'published_old': 'published_at ASC, id ASC', 'author': 'author_name COLLATE NOCASE ASC, id DESC'}
-def list_posts(flt='all', q='', limit=25, offset=0, sort='recent'):
+def _posts_where(flt, q):
     where, params = _filter_clause(flt)
     where = f'({where})'
     if q:
@@ -109,13 +109,19 @@ def list_posts(flt='all', q='', limit=25, offset=0, sort='recent'):
         like = f'%{esc}%'
         where += " AND (author_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR draft LIKE ? ESCAPE '\\')"
         params = (*params, like, like, like, like)
+    return (where, params)
+def list_posts(flt='all', q='', limit=30, offset=0, sort='recent'):
+    where, params = _posts_where(flt, q)
     total = db.query_one(f'SELECT COUNT(*) FROM posts WHERE {where}', params)[0]
     rows = db.query(f'SELECT * FROM posts WHERE {where} ORDER BY {SORTS.get(sort, SORTS["recent"])} LIMIT ? OFFSET ?', (*params, limit, offset))
     return ([dict(r) for r in rows], total)
+def post_ids(flt='all', q=''):
+    where, params = _posts_where(flt, q)
+    return [r[0] for r in db.query(f'SELECT id FROM posts WHERE {where} ORDER BY discovered_at DESC, id DESC LIMIT 5000', params)]
 def stats():
     def n(sql):
         return db.query_one(sql)[0]
-    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')"), 'likes_24h': daily_used('like'), 'comments_24h': daily_used('comment')}
+    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'posts_24h': db.query_one('SELECT COUNT(*) FROM posts WHERE discovered_at>=?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT),))[0], 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')"), 'likes_24h': daily_used('like'), 'comments_24h': daily_used('comment'), 'connects_24h': connect_used()}
 def daily_used(kind):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
     return db.query_one("SELECT COUNT(*) FROM actions WHERE kind=? AND status='success' AND COALESCE(detail,'')!='already liked' AND created_at>=?", (kind, cutoff))[0]
@@ -127,6 +133,17 @@ def daily_wait(kind, limit):
     if len(rows) < limit:
         return 0
     return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
+def connect_used():
+    return db.query_one('SELECT COUNT(*) FROM connections WHERE created_at>=?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT),))[0]
+def connect_wait(limit):
+    if limit <= 0:
+        return 0
+    rows = db.query('SELECT created_at FROM connections WHERE created_at>=? ORDER BY id DESC LIMIT ?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT), limit))
+    if len(rows) < limit:
+        return 0
+    return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
+def add_connection(name):
+    db.execute('INSERT INTO connections(name,created_at) VALUES(?,?)', ((name or '')[:200], now_iso()))
 def queue_size():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")[0]
 def ai_backlog():
@@ -204,7 +221,7 @@ def prune_events(days=30):
 def clear_events():
     return db.execute('DELETE FROM events').rowcount
 JOB_SORTS = {'next': 'jobs.next_run_at ASC, jobs.id ASC', 'newest': 'jobs.id DESC', 'oldest': 'jobs.id ASC', 'updated': 'jobs.updated_at DESC, jobs.id DESC', 'attempts': 'jobs.attempts DESC, jobs.id DESC', 'author': 'posts.author_name COLLATE NOCASE ASC, jobs.id DESC'}
-def list_jobs(status='active', kind='all', q='', limit=25, offset=0, sort='next'):
+def _jobs_where(status, kind, q):
     where, params = (['1=1'], [])
     if status == 'active':
         where.append("jobs.status IN ('queued','running')")
@@ -218,10 +235,15 @@ def list_jobs(status='active', kind='all', q='', limit=25, offset=0, sort='next'
         esc = q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         where.append("(posts.author_name LIKE ? ESCAPE '\\' OR posts.title LIKE ? ESCAPE '\\' OR posts.body LIKE ? ESCAPE '\\' OR jobs.last_error LIKE ? ESCAPE '\\')")
         params += [f'%{esc}%'] * 4
-    clause = ' AND '.join(where)
+    return (' AND '.join(where), params)
+def list_jobs(status='active', kind='all', q='', limit=30, offset=0, sort='next'):
+    clause, params = _jobs_where(status, kind, q)
     total = db.query_one(f'SELECT COUNT(*) FROM jobs JOIN posts ON posts.id=jobs.post_id WHERE {clause}', params)[0]
     rows = db.query(f"SELECT jobs.*, posts.author_name, posts.title, posts.url, SUBSTR(COALESCE(posts.body,''),1,160) AS preview, COALESCE(NULLIF(posts.edited_comment,''), posts.draft) AS comment FROM jobs JOIN posts ON posts.id=jobs.post_id WHERE {clause} ORDER BY {JOB_SORTS.get(sort, JOB_SORTS['next'])} LIMIT ? OFFSET ?", (*params, limit, offset))
     return ([dict(r) for r in rows], total)
+def job_ids(status='active', kind='all', q=''):
+    clause, params = _jobs_where(status, kind, q)
+    return [r[0] for r in db.query(f'SELECT jobs.id FROM jobs JOIN posts ON posts.id=jobs.post_id WHERE {clause} ORDER BY jobs.id DESC LIMIT 5000', params)]
 def queue_counts():
     c = {r['status']: r['n'] for r in db.query('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status')}
     c['active'] = c.get('queued', 0) + c.get('running', 0)
