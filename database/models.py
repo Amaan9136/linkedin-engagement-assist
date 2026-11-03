@@ -142,8 +142,10 @@ def connect_wait(limit):
     if len(rows) < limit:
         return 0
     return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
-def add_connection(name):
-    db.execute('INSERT INTO connections(name,created_at) VALUES(?,?)', ((name or '')[:200], now_iso()))
+def add_connection(name, url=None):
+    db.execute('INSERT INTO connections(name,url,created_at) VALUES(?,?,?)', ((name or '')[:200], url, now_iso()))
+def list_connections(limit=50, offset=0):
+    return ([dict(r) for r in db.query('SELECT id, name, url, created_at FROM connections ORDER BY id DESC LIMIT ? OFFSET ?', (limit, offset))], db.query_one('SELECT COUNT(*) FROM connections')[0])
 def queue_size():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")[0]
 def ai_backlog():

@@ -34,6 +34,7 @@ SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria
 SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
 SEL_CONNECT = "button[aria-label*='Invite'][aria-label*='connect' i]:not([data-skip]):visible, button:text-is('Connect'):not([data-skip]):visible"
 CONNECT_LEFT_JS = "e => e.isConnected && (/^Invite .* connect/i.test(e.getAttribute('aria-label') || '') || (e.innerText || '').trim() === 'Connect')"
+CONNECT_URL_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return a.href; } return ''; }"
 CONNECT_NAME_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return (a.innerText || '').trim().split('\\n')[0]; } return ''; }"
 SEL_SEND_NOTE = "button[aria-label='Send without a note'], button:has-text('Send without a note')"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
@@ -461,8 +462,11 @@ class LinkedInBrowser:
         else:
             return None
         name = 'someone'
+        url = None
         try:
             el = btn.element_handle()
+            url = (el.evaluate(CONNECT_URL_JS) or '').split('?')[0]
+            url = url if url.startswith('https://www.linkedin.com/in/') else None
             name = re.sub('^Invite\\s+|\\s+to connect.*$', '', el.get_attribute('aria-label') or '').strip() or el.evaluate(CONNECT_NAME_JS) or name
             el.scroll_into_view_if_needed()
             page.wait_for_timeout(random.randint(200, 500))
@@ -479,7 +483,7 @@ class LinkedInBrowser:
                 raise TemporaryError(f'Connect button for {name} did not change after the click')
         except (PWError, PWTimeout) as e:
             raise TemporaryError('Could not send the connection request: ' + str(e).splitlines()[0]) from e
-        return name
+        return name, url
     def _comment_visible(self, page, text):
         snippet = _norm(text)[:50]
         loc = page.locator(SEL_COMMENTS)

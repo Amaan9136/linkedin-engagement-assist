@@ -27,11 +27,13 @@ def list_queue():
     try:
         page = max(1, int(request.args.get('page', 1)))
         per = min(100, max(5, int(request.args.get('per_page', 30))))
+        cpage = max(1, int(request.args.get('c_page', 1)))
     except ValueError:
         return fail('Invalid pagination')
     rows, total = models.list_jobs(status, kind, q, per, (page - 1) * per, sort)
     s = models.all_settings()
-    return ok(jobs=rows, total=total, page=page, per_page=per, counts=models.queue_counts(), max_queue=s['max_queue'], usage={'like': models.daily_used('like'), 'comment': models.daily_used('comment')}, limits={'like': s['daily_like_limit'], 'comment': s['daily_comment_limit']})
+    crows, ctotal = models.list_connections(50, (cpage - 1) * 50)
+    return ok(jobs=rows, total=total, page=page, per_page=per, counts=models.queue_counts(), max_queue=s['max_queue'], usage={'like': models.daily_used('like'), 'comment': models.daily_used('comment'), 'connect': models.connect_used()}, limits={'like': s['daily_like_limit'], 'comment': s['daily_comment_limit'], 'connect': s['daily_connect_limit']}, connections=crows, connections_total=ctotal, c_page=cpage)
 @bp.get('/api/queue/ids')
 @api
 def queue_ids():

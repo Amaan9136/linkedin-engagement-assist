@@ -392,7 +392,7 @@ function initLogs() {
   loadLogs();
   setInterval(loadLogs, 15000);
 }
-const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 30, total: 0, selected: new Set(), sig: ''};
+const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 30, cpage: 1, total: 0, selected: new Set(), sig: ''};
 function qCount() {
   $('#count').textContent = qstate.total + ' job(s)' + (qstate.selected.size ? ' · ' + qstate.selected.size + ' selected' : '');
 }
@@ -424,11 +424,16 @@ function jobRow(j) {
 }
 async function loadQueue(force) {
   try {
-    const qs = new URLSearchParams({status: qstate.status, kind: qstate.kind, sort: qstate.sort, q: qstate.q, page: qstate.page, per_page: qstate.per});
+    const qs = new URLSearchParams({status: qstate.status, kind: qstate.kind, sort: qstate.sort, q: qstate.q, page: qstate.page, per_page: qstate.per, c_page: qstate.cpage});
     const d = await api('GET', '/api/queue?' + qs);
     const pages = Math.max(1, Math.ceil(d.total / qstate.per));
     if (qstate.page > pages) {
       qstate.page = pages;
+      return loadQueue(true);
+    }
+    const cpages = Math.max(1, Math.ceil(d.connections_total / 50));
+    if (qstate.cpage > cpages) {
+      qstate.cpage = cpages;
       return loadQueue(true);
     }
     const sig = JSON.stringify(d);
@@ -437,8 +442,12 @@ async function loadQueue(force) {
     qstate.total = d.total;
     document.querySelectorAll('[data-qcount]').forEach(n => { n.textContent = d.counts[n.dataset.qcount] ?? 0; });
     $('#q-cap').textContent = d.counts.active + ' / ' + d.max_queue;
-    $('#q-limits').textContent = 'Last 24 hours: ' + d.usage.like + ' of ' + (d.limits.like || 'unlimited') + ' likes · ' + d.usage.comment + ' of ' + (d.limits.comment || 'unlimited') + ' comments. Jobs wait automatically when a daily limit is reached.';
+    $('#q-limits').textContent = 'Last 24 hours: ' + d.usage.like + ' of ' + (d.limits.like || 'unlimited') + ' likes · ' + d.usage.comment + ' of ' + (d.limits.comment || 'unlimited') + ' comments · ' + d.usage.connect + ' of ' + (d.limits.connect || 'unlimited') + ' connections. Jobs wait automatically when a daily limit is reached.';
     $('#q-body').replaceChildren(...(d.jobs.length ? d.jobs.map(jobRow) : [h('tr', {}, h('td', {colspan: '10', class: 'muted'}, 'No jobs match these filters.'))]));
+    $('#c-body').replaceChildren(...(d.connections.length ? d.connections.map(c => h('tr', {}, h('td', {}, c.url ? h('a', {href: c.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open this profile on LinkedIn.'}, c.name || 'Unknown') : c.name || 'Unknown'), h('td', {}, fmt(c.created_at)))) : [h('tr', {}, h('td', {colspan: '2', class: 'muted'}, 'No connection requests sent yet.'))]));
+    $('#c-page-info').textContent = 'Page ' + qstate.cpage + ' of ' + cpages + ' · ' + d.connections_total + ' request(s)';
+    $('#c-prev').disabled = qstate.cpage <= 1;
+    $('#c-next').disabled = qstate.cpage >= cpages;
     $('#page-info').textContent = 'Page ' + qstate.page + ' of ' + pages;
     $('#prev').disabled = qstate.page <= 1;
     $('#next').disabled = qstate.page >= pages;
@@ -460,6 +469,8 @@ function initQueue() {
   $('#btn-refresh').onclick = () => loadQueue(true);
   $('#prev').onclick = () => { qstate.page--; loadQueue(true); };
   $('#next').onclick = () => { qstate.page++; loadQueue(true); };
+  $('#c-prev').onclick = () => { qstate.cpage--; loadQueue(true); };
+  $('#c-next').onclick = () => { qstate.cpage++; loadQueue(true); };
   $('#select-page').onclick = () => document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => {
     c.checked = true;
     c.dispatchEvent(new Event('change'));

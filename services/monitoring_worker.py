@@ -268,7 +268,7 @@ class MonitoringWorker:
         if wait > 0:
             return
         try:
-            name = lane.browser.connect_next()
+            found = lane.browser.connect_next()
         except LimitReached as e:
             models.set_settings({'connect_enabled': False})
             log.warning('%s', e)
@@ -285,11 +285,12 @@ class MonitoringWorker:
         except TemporaryError as e:
             log.warning('Connection request failed: %s', e)
             return
-        if name is None:
+        if found is None:
             self.next_connect = time.time() + 600
             log.warning('No Connect buttons found on My Network; trying again in 10 minutes')
             return
-        models.add_connection(name)
+        name, url = found
+        models.add_connection(name, url)
         self.next_connect = time.time() + s['connect_gap']
         log.info('Connection request sent to "%s"', name)
     def _run_job(self, job, s, lane):
