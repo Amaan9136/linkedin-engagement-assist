@@ -71,8 +71,22 @@
 <section class="panel">
 <h2>Connection requests</h2>
 <p class="hint">The latest connection requests sent from My Network. Click a name to open that profile on LinkedIn.</p>
+<div class="toolbar">
+<select id="c-range" title="Show only requests sent in a time range.">
+<option value="all">All time</option>
+<option value="24h">Last 24 hours</option>
+<option value="7d">Last 7 days</option>
+<option value="30d">Last 30 days</option>
+</select>
+<select id="c-sort" title="Choose how requests are ordered.">
+<option value="newest">Newest first</option>
+<option value="oldest">Oldest first</option>
+<option value="name">Name A–Z</option>
+<option value="name_desc">Name Z–A</option>
+</select>
+</div>
 <div class="table-wrap">
-<table class="logs"><thead><tr><th>Person</th><th>Sent</th></tr></thead><tbody id="c-body"></tbody></table>
+<table class="logs"><thead><tr><th>No.</th><th>Person</th><th>Sent</th></tr></thead><tbody id="c-body"></tbody></table>
 </div>
 <div class="pager"><button class="btn" id="c-prev" title="Go to the previous page.">Previous</button><span id="c-page-info" class="muted"></span><button class="btn" id="c-next" title="Go to the next page.">Next</button></div>
 </section>

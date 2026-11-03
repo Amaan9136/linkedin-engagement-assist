@@ -86,8 +86,7 @@ class BrowserHost:
                 args.append('--password-store=basic')
                 if self.cfg.no_sandbox:
                     args.append('--no-sandbox')
-            self.cfg.log_dir.mkdir(parents=True, exist_ok=True)
-            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=open(self.cfg.log_dir / 'browser_stderr.log', 'w'))
+            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             raise BrowserUnavailable(LinkedInBrowser._explain(e)) from e
         for _ in range(60):
@@ -102,7 +101,7 @@ class BrowserHost:
             except OSError:
                 time.sleep(0.5)
         self._kill()
-        raise BrowserUnavailable('The browser did not start. Close any Chrome using the profile or check CHROMIUM_EXECUTABLE in .env (details: logs/browser_stderr.log)')
+        raise BrowserUnavailable('The browser did not start. Close any Chrome using the profile or check CHROMIUM_EXECUTABLE in .env')
 class LinkedInBrowser:
     def __init__(self, cfg, host):
         self.cfg = cfg

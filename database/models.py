@@ -144,8 +144,11 @@ def connect_wait(limit):
     return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
 def add_connection(name, url=None):
     db.execute('INSERT INTO connections(name,url,created_at) VALUES(?,?,?)', ((name or '')[:200], url, now_iso()))
-def list_connections(limit=50, offset=0):
-    return ([dict(r) for r in db.query('SELECT id, name, url, created_at FROM connections ORDER BY id DESC LIMIT ? OFFSET ?', (limit, offset))], db.query_one('SELECT COUNT(*) FROM connections')[0])
+CONNECTION_SORTS = {'newest': 'id DESC', 'oldest': 'id ASC', 'name': 'name COLLATE NOCASE ASC, id DESC', 'name_desc': 'name COLLATE NOCASE DESC, id DESC'}
+CONNECTION_RANGES = {'24h': 1, '7d': 7, '30d': 30}
+def list_connections(limit=50, offset=0, sort='newest', period='all'):
+    since = (datetime.now(timezone.utc) - timedelta(days=CONNECTION_RANGES[period])).strftime(FMT) if period in CONNECTION_RANGES else ''
+    return ([dict(r) for r in db.query(f'SELECT id, name, url, created_at FROM connections WHERE created_at>=? ORDER BY {CONNECTION_SORTS.get(sort, CONNECTION_SORTS["newest"])} LIMIT ? OFFSET ?', (since, limit, offset))], db.query_one('SELECT COUNT(*) FROM connections WHERE created_at>=?', (since,))[0])
 def queue_size():
     return db.query_one("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")[0]
 def ai_backlog():

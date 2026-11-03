@@ -392,7 +392,7 @@ function initLogs() {
   loadLogs();
   setInterval(loadLogs, 15000);
 }
-const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 30, cpage: 1, total: 0, selected: new Set(), sig: ''};
+const qstate = {status: 'active', kind: 'all', sort: 'next', q: '', page: 1, per: 30, cpage: 1, csort: 'newest', crange: 'all', total: 0, selected: new Set(), sig: ''};
 function qCount() {
   $('#count').textContent = qstate.total + ' job(s)' + (qstate.selected.size ? ' · ' + qstate.selected.size + ' selected' : '');
 }
@@ -424,7 +424,7 @@ function jobRow(j) {
 }
 async function loadQueue(force) {
   try {
-    const qs = new URLSearchParams({status: qstate.status, kind: qstate.kind, sort: qstate.sort, q: qstate.q, page: qstate.page, per_page: qstate.per, c_page: qstate.cpage});
+    const qs = new URLSearchParams({status: qstate.status, kind: qstate.kind, sort: qstate.sort, q: qstate.q, page: qstate.page, per_page: qstate.per, c_page: qstate.cpage, c_sort: qstate.csort, c_range: qstate.crange});
     const d = await api('GET', '/api/queue?' + qs);
     const pages = Math.max(1, Math.ceil(d.total / qstate.per));
     if (qstate.page > pages) {
@@ -444,7 +444,7 @@ async function loadQueue(force) {
     $('#q-cap').textContent = d.counts.active + ' / ' + d.max_queue;
     $('#q-limits').textContent = 'Last 24 hours: ' + d.usage.like + ' of ' + (d.limits.like || 'unlimited') + ' likes · ' + d.usage.comment + ' of ' + (d.limits.comment || 'unlimited') + ' comments · ' + d.usage.connect + ' of ' + (d.limits.connect || 'unlimited') + ' connections. Jobs wait automatically when a daily limit is reached.';
     $('#q-body').replaceChildren(...(d.jobs.length ? d.jobs.map(jobRow) : [h('tr', {}, h('td', {colspan: '10', class: 'muted'}, 'No jobs match these filters.'))]));
-    $('#c-body').replaceChildren(...(d.connections.length ? d.connections.map(c => h('tr', {}, h('td', {}, c.url ? h('a', {href: c.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open this profile on LinkedIn.'}, c.name || 'Unknown') : c.name || 'Unknown'), h('td', {}, fmt(c.created_at)))) : [h('tr', {}, h('td', {colspan: '2', class: 'muted'}, 'No connection requests sent yet.'))]));
+    $('#c-body').replaceChildren(...(d.connections.length ? d.connections.map((c, i) => h('tr', {}, h('td', {}, (qstate.cpage - 1) * 50 + i + 1), h('td', {}, c.url ? h('a', {href: c.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open this profile on LinkedIn.'}, c.name || 'Unknown') : c.name || 'Unknown'), h('td', {}, fmt(c.created_at)))) : [h('tr', {}, h('td', {colspan: '3', class: 'muted'}, 'No connection requests match these filters.'))]));
     $('#c-page-info').textContent = 'Page ' + qstate.cpage + ' of ' + cpages + ' · ' + d.connections_total + ' request(s)';
     $('#c-prev').disabled = qstate.cpage <= 1;
     $('#c-next').disabled = qstate.cpage >= cpages;
@@ -469,6 +469,8 @@ function initQueue() {
   $('#btn-refresh').onclick = () => loadQueue(true);
   $('#prev').onclick = () => { qstate.page--; loadQueue(true); };
   $('#next').onclick = () => { qstate.page++; loadQueue(true); };
+  $('#c-range').onchange = e => { qstate.crange = e.target.value; qstate.cpage = 1; loadQueue(true); };
+  $('#c-sort').onchange = e => { qstate.csort = e.target.value; qstate.cpage = 1; loadQueue(true); };
   $('#c-prev').onclick = () => { qstate.cpage--; loadQueue(true); };
   $('#c-next').onclick = () => { qstate.cpage++; loadQueue(true); };
   $('#select-page').onclick = () => document.querySelectorAll('#q-body input[type=checkbox]').forEach(c => {
