@@ -78,6 +78,8 @@ def _to_post(item, cutoff):
     sub = item.get('sub') or ''
     if 'promoted' in sub.lower():
         return None
+    if len(' '.join(tx.clean_text(item.get('body')).split())) < 15:
+        return None
     published = tx.parse_relative_time(sub)
     if published and datetime.strptime(published, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc) < cutoff:
         return None

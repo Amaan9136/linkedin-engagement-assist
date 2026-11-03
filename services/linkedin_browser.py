@@ -1,6 +1,8 @@
 import logging
+import os
 import random
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -36,6 +38,7 @@ CONNECT_NAME_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.pare
 SEL_SEND_NOTE = "button[aria-label='Send without a note'], button:has-text('Send without a note')"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
 CLIP_JS = "(() => { const p = Clipboard.prototype, w = p.writeText; p.writeText = function (t) { window.__copied = t; return w.apply(this, arguments); }; document.addEventListener('copy', () => { const t = String(getSelection()); if (t) window.__copied = t; }, true); })()"
+CHROME_PATHS = [os.path.join(os.environ.get(k, ''), r) for k in ('PROGRAMFILES', 'PROGRAMFILES(X86)', 'LOCALAPPDATA') for r in ('Google/Chrome/Application/chrome.exe',)] + ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
 def _norm(s):
     return re.sub('\\s+', ' ', s or '').strip().lower()
 class BrowserHost:
@@ -69,11 +72,9 @@ class BrowserHost:
     def _launch(self):
         try:
             self.cfg.profile_dir.mkdir(parents=True, exist_ok=True)
-            exe = self.cfg.chromium_exec
+            exe = self.cfg.chromium_exec or next((c for c in CHROME_PATHS if os.path.exists(c)), None) or shutil.which('google-chrome') or shutil.which('chrome')
             if not exe:
-                from playwright.sync_api import sync_playwright
-                with sync_playwright() as p:
-                    exe = p.chromium.executable_path
+                raise FileNotFoundError('Chrome was not found. Set CHROMIUM_EXECUTABLE in .env to your chrome.exe path')
             with socket.socket() as sk:
                 sk.bind(('127.0.0.1', 0))
                 port = sk.getsockname()[1]
@@ -84,7 +85,8 @@ class BrowserHost:
                 args.append('--password-store=basic')
                 if self.cfg.no_sandbox:
                     args.append('--no-sandbox')
-            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.cfg.log_dir.mkdir(parents=True, exist_ok=True)
+            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=open(self.cfg.log_dir / 'browser_stderr.log', 'w'))
         except Exception as e:
             raise BrowserUnavailable(LinkedInBrowser._explain(e)) from e
         for _ in range(60):
@@ -99,7 +101,7 @@ class BrowserHost:
             except OSError:
                 time.sleep(0.5)
         self._kill()
-        raise BrowserUnavailable('The browser did not start. Another Chromium may be using the profile, or Chromium is not installed (run: playwright install chromium)')
+        raise BrowserUnavailable('The browser did not start. Close any Chrome using the profile or check CHROMIUM_EXECUTABLE in .env (details: logs/browser_stderr.log)')
 class LinkedInBrowser:
     def __init__(self, cfg, host):
         self.cfg = cfg
@@ -159,8 +161,8 @@ class LinkedInBrowser:
             except Exception as x:
                 probe = str(x)
             return 'Playwright driver failed to start (driver check: ' + probe + '). Run: pip install --upgrade playwright greenlet && playwright install chromium'
-        if "executable doesn't exist" in low or 'playwright install' in low:
-            return 'Chromium is not installed. Run: playwright install chromium'
+        if 'chrome was not found' in low or 'winerror 2' in low or "executable doesn't exist" in low or 'playwright install' in low:
+            return 'Chrome was not found. Set CHROMIUM_EXECUTABLE in .env to your chrome.exe path'
         if 'shared libraries' in low or 'missing dependencies' in low:
             return "Missing system libraries for Chromium. Linux: 'playwright install-deps chromium'. Termux: see README"
         if 'processsingleton' in low or ('profile' in low and 'in use' in low):
@@ -395,10 +397,14 @@ class LinkedInBrowser:
                 raise PermanentError('Post is no longer available') from e
             raise TemporaryError('Post content did not load (layout change or slow network)') from e
         snip = _norm(post['body'] if post else '')[:40]
-        if len(snip) >= 15 and snip not in _norm(self._scope(page).inner_text()):
+        if len(snip) < 15:
+            raise PermanentError('Post has too little text to confirm it is the right post, so nothing was posted')
+        hit = page.locator(SEL_UPDATE).filter(has_text=snip)
+        if not hit.count():
             for k in [k for k, v in self._links.items() if v == self._urn_of(url)]:
                 del self._links[k]
             raise PermanentError('Stored post link opens a different post, so nothing was posted')
+        self._card = hit.first
         self.pause(page)
         return page
     @staticmethod
@@ -512,7 +518,10 @@ class LinkedInBrowser:
             for _ in range(8):
                 page.wait_for_timeout(400)
                 self._guard_limit(page, 'daily comment limit', 'comment', LIMIT_MSG)
-                submit = self._first_visible(update, SEL_SUBMIT) or self._first_visible(page, SEL_SUBMIT)
+                submit = self._first_visible(update, SEL_SUBMIT)
+                if submit is None:
+                    pool = page.locator(', '.join(SEL_SUBMIT)).locator('visible=true')
+                    submit = pool.first if pool.count() == 1 else None
                 if submit is not None:
                     break
             if submit is None:
