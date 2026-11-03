@@ -290,7 +290,7 @@ class LinkedInBrowser:
                 tab.close()
     def _copy_link(self, page, card):
         try:
-            page.evaluate("window.__copied = null; document.querySelectorAll(\"[data-testid='toasts-title']\").forEach(h => { h.parentElement.style.display = 'none'; }); document.querySelectorAll(\"a[href*='lnkd%2Ein%2Fp%2F']\").forEach(a => { a.dataset.old = '1'; })")
+            page.evaluate("window.__copied = null; document.querySelectorAll(\"[data-testid='toasts-title']\").forEach(h => { h.parentElement.style.display = 'none'; }); window.__old = new Set([...document.querySelectorAll(\"a[href*='lnkd%2Ein%2Fp%2F']\")].map(a => a.href))")
             scope = page.locator(f"[componentkey^='update-card'][componentkey*='{card}']").first
             if not scope.locator(SEL_LINK_OPEN).count():
                 return None
@@ -306,10 +306,10 @@ class LinkedInBrowser:
             else:
                 raise PWTimeout('Copy link not found')
             for _ in range(15):
-                if page.evaluate("!!(window.__copied || document.querySelector(\"a[href*='lnkd%2Ein%2Fp%2F']:not([data-old])\"))"):
+                if page.evaluate("!!(window.__copied || [...document.querySelectorAll(\"a[href*='lnkd%2Ein%2Fp%2F']\")].find(a => !window.__old.has(a.href)))"):
                     break
                 page.wait_for_timeout(200)
-            raw = page.evaluate("window.__copied || decodeURIComponent((document.querySelector(\"a[href*='lnkd%2Ein%2Fp%2F']:not([data-old])\") || {href: ''}).href) || Promise.race([navigator.clipboard.readText().catch(() => ''), new Promise(r => setTimeout(() => r(''), 1500))])") or ''
+            raw = page.evaluate("window.__copied || decodeURIComponent(([...document.querySelectorAll(\"a[href*='lnkd%2Ein%2Fp%2F']\")].find(a => !window.__old.has(a.href)) || {href: ''}).href) || Promise.race([navigator.clipboard.readText().catch(() => ''), new Promise(r => setTimeout(() => r(''), 1500))])") or ''
             raw = (re.search(r'https?://lnkd\.in/\S+?(?=&|$)', raw) or [raw])[0]
             urn = self._urn_of(raw) or self._resolve_short(raw)
             self._link_fail = 0 if urn else self._link_fail + 1
@@ -394,6 +394,11 @@ class LinkedInBrowser:
             if any((m in body for m in UNAVAILABLE_MARKERS)):
                 raise PermanentError('Post is no longer available') from e
             raise TemporaryError('Post content did not load (layout change or slow network)') from e
+        snip = _norm(post['body'] if post else '')[:40]
+        if len(snip) >= 15 and snip not in _norm(self._scope(page).inner_text()):
+            for k in [k for k, v in self._links.items() if v == self._urn_of(url)]:
+                del self._links[k]
+            raise PermanentError('Stored post link opens a different post, so nothing was posted')
         self.pause(page)
         return page
     @staticmethod
