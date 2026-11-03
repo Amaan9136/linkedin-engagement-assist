@@ -205,8 +205,8 @@ class LinkedInBrowser:
     def pause(self, page, lo=700, hi=1600):
         page.wait_for_timeout(random.randint(lo, hi))
     def goto(self, url):
-        page = self._get_page()
         try:
+            page = self._get_page()
             page.goto(url, wait_until='domcontentloaded')
         except PWTimeout as e:
             raise TemporaryError(f'Navigation timed out: {url}') from e
@@ -400,6 +400,10 @@ class LinkedInBrowser:
         if len(snip) < 15:
             raise PermanentError('Post has too little text to confirm it is the right post, so nothing was posted')
         hit = page.locator(SEL_UPDATE).filter(has_text=snip)
+        try:
+            hit.first.wait_for(timeout=8000)
+        except PWTimeout:
+            pass
         if not hit.count():
             for k in [k for k, v in self._links.items() if v == self._urn_of(url)]:
                 del self._links[k]
@@ -537,6 +541,8 @@ class LinkedInBrowser:
             else:
                 raise TemporaryError('Comment submit button stayed disabled')
         except (PWError, PWTimeout) as e:
+            if not isinstance(e, PWTimeout) and any((m in str(e).lower() for m in ('closed', 'disconnected', 'crashed'))):
+                raise BrowserUnavailable('Browser disconnected') from e
             raise TemporaryError('Could not prepare the comment: ' + str(e).splitlines()[0]) from e
         try:
             submit.click()
