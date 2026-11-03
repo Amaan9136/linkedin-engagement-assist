@@ -503,7 +503,6 @@ try {
 refreshStatus();
 setInterval(refreshStatus, 8000);
 initSwitches();
-if (page === 'dashboard' || page === 'posts') $('#btn-poll').onclick = () => act(() => api('POST', '/api/monitor/poll-now'));
 if (page === 'dashboard') initDashboard();
 if (page === 'posts') initPosts();
 if (page === 'settings') initSettings();

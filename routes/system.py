@@ -21,11 +21,6 @@ def feature(name, state):
         if name == 'monitoring':
             current_app.extensions['worker'].poll_now()
     return ok(message=label + (' resumed' if state == 'resume' else ' paused. Queued work is kept.'))
-@bp.post('/api/monitor/poll-now')
-@api
-def poll_now():
-    current_app.extensions['worker'].poll_now()
-    return ok(message='Poll scheduled')
 @bp.post('/api/browser/restart')
 @api
 def restart_browser():
