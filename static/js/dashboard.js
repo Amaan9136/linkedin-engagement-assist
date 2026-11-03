@@ -407,7 +407,7 @@ function jobRow(j) {
   return h('tr', {},
     h('td', {}, chk),
     h('td', {}, j.id),
-    h('td', {class: 'msg'}, h('strong', {}, j.author_name || 'Unknown author'), j.title ? ' · ' + j.title : '', h('div', {class: 'muted'}, j.preview || '(no text)'), j.kind === 'comment' && j.comment ? h('div', {class: 'draft'}, j.comment) : null),
+    h('td', {class: 'msg'}, h('strong', {}, j.author_name || 'Unknown author'), j.title ? ' · ' + j.title : '', h('div', {class: 'muted'}, j.preview || '(no text)'), j.kind !== 'like' && j.comment ? h('div', {class: 'draft'}, j.comment) : null),
     h('td', {}, badge({ai: 'AI draft', like: 'Like', comment: 'Comment'}[j.kind] || j.kind)),
     h('td', {}, badge(nice(j.status), statusClass(j.status === 'running' ? 'queued' : j.status))),
     h('td', {}, j.attempts),
