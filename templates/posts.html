@@ -7,11 +7,12 @@
 <div class="switches">
 {% include '_switches.html' %}
 <button class="sw" id="btn-autoai" title="When on, the AI writes a draft for every new post. When off, you ask for drafts yourself.">Auto-write drafts</button>
-<button class="sw" id="btn-autoscroll" title="Scrolls your LinkedIn feed for 3 minutes to collect more posts. Click again to stop.">Collect more posts</button>
+<button class="sw" id="btn-poll" title="Look for new posts right now.">Check feed now</button>
 </div>
 <div class="toolbar">
 <select id="filter" title="Choose which posts to show.">
 <option value="all" data-hint="Every post collected from your feed.">All posts</option>
+<option value="fresh" data-hint="Posts just scanned from your feed where nothing has started yet: AI draft waiting, comment and like not started.">Freshly scanned from feed</option>
 <option value="feed" data-hint="Posts you can still like or comment on.">Open to like or comment</option>
 <option value="recent" data-hint="Posts found in the last 24 hours.">Found in the last 24 hours</option>
 <option value="older_unprocessed" data-hint="Older posts that never got a draft.">Older, no draft yet</option>

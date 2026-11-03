@@ -9,39 +9,23 @@ bp = Blueprint('system_api', __name__)
 @api
 def health():
     return ok(health=health_service.health(models.all_settings(), current_app.extensions['worker']))
-@bp.post('/api/monitor/pause')
-@api
-def pause():
-    models.set_settings({'monitoring_enabled': False})
-    return ok(message='Monitoring paused. Queued work is kept.')
-@bp.post('/api/monitor/resume')
-@api
-def resume():
-    models.set_settings({'monitoring_enabled': True})
-    worker = current_app.extensions['worker']
-    worker.start()
-    worker.poll_now()
-    return ok(message='Monitoring resumed')
 @bp.post('/api/feature/<name>/<state>')
 @api
 def feature(name, state):
-    label = {'like': 'Likes', 'comment': 'Comments', 'connect': 'Connections'}.get(name)
+    label = {'monitoring': 'Feed checking', 'like': 'Likes', 'comment': 'Comments', 'connect': 'Connections'}.get(name)
     if not label or state not in ('pause', 'resume'):
         return fail('Unknown control', 404)
     models.set_settings({name + '_enabled': state == 'resume'})
     if state == 'resume':
         current_app.extensions['worker'].start()
+        if name == 'monitoring':
+            current_app.extensions['worker'].poll_now()
     return ok(message=label + (' resumed' if state == 'resume' else ' paused. Queued work is kept.'))
 @bp.post('/api/monitor/poll-now')
 @api
 def poll_now():
     current_app.extensions['worker'].poll_now()
     return ok(message='Poll scheduled')
-@bp.post('/api/monitor/autoscroll')
-@api
-def autoscroll():
-    on = current_app.extensions['worker'].toggle_autoscroll()
-    return ok(message='Auto scroll started for 3 minutes' if on else 'Auto scroll stopped', active=on)
 @bp.post('/api/browser/restart')
 @api
 def restart_browser():

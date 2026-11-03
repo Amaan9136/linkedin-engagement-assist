@@ -117,9 +117,6 @@ async function refreshStatus() {
       $('#st-msg').textContent = msgs.join(' · ');
     }
     if (page === 'posts') {
-      const on = d.status.autoscroll_until && Date.parse(d.status.autoscroll_until) > Date.now();
-      $('#btn-autoscroll').textContent = on ? 'Stop collecting' : 'Collect more posts';
-      $('#btn-autoscroll').classList.toggle('on', !!on);
       state.autoAi = !!d.config.auto_ai;
       $('#btn-autoai').textContent = 'Auto-write drafts: ' + (state.autoAi ? 'On' : 'Off');
       $('#btn-autoai').classList.toggle('on', state.autoAi);
@@ -132,7 +129,7 @@ async function refreshStatus() {
 }
 function syncSwitches(c) {
   document.querySelectorAll('.sw[data-sw]').forEach(b => {
-    const on = !!c[b.dataset.sw === 'monitoring' ? 'monitoring_enabled' : b.dataset.sw + '_enabled'];
+    const on = !!c[b.dataset.sw + '_enabled'];
     b.classList.toggle('on', on);
     b.classList.toggle('off', !on);
     b.querySelector('.sw-state').textContent = on ? 'On' : 'Paused';
@@ -140,7 +137,7 @@ function syncSwitches(c) {
 }
 function initSwitches() {
   document.querySelectorAll('.sw[data-sw]').forEach(b => {
-    b.onclick = () => act(() => api('POST', (b.dataset.sw === 'monitoring' ? '/api/monitor/' : '/api/feature/' + b.dataset.sw + '/') + (b.classList.contains('on') ? 'pause' : 'resume'))).then(refreshStatus);
+    b.onclick = () => act(() => api('POST', '/api/feature/' + b.dataset.sw + '/' + (b.classList.contains('on') ? 'pause' : 'resume'))).then(refreshStatus);
   });
 }
 async function bulk(url, action, ids, size) {
@@ -159,7 +156,6 @@ function hint(sel, out) {
   sync();
 }
 function initDashboard() {
-  $('#btn-poll').onclick = () => act(() => api('POST', '/api/monitor/poll-now'));
   $('#btn-browser').onclick = () => {
     if (confirm('Restart the browser now?')) act(() => api('POST', '/api/browser/restart'));
   };
@@ -275,7 +271,6 @@ function initPosts() {
   $('#search').oninput = e => { clearTimeout(t); t = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadPosts(); }, 300); };
   $('#btn-refresh').onclick = loadPosts;
   $('#btn-autoai').onclick = () => act(() => api('PUT', '/api/settings', {auto_ai: !state.autoAi})).then(refreshStatus);
-  $('#btn-autoscroll').onclick = () => act(() => api('POST', '/api/monitor/autoscroll')).then(refreshStatus);
   $('#prev').onclick = () => { state.page--; loadPosts(); };
   $('#next').onclick = () => { state.page++; loadPosts(); };
   $('#select-page').onclick = () => document.querySelectorAll('#posts .post input[type=checkbox]').forEach(c => {
@@ -508,6 +503,7 @@ try {
 refreshStatus();
 setInterval(refreshStatus, 8000);
 initSwitches();
+if (page === 'dashboard' || page === 'posts') $('#btn-poll').onclick = () => act(() => api('POST', '/api/monitor/poll-now'));
 if (page === 'dashboard') initDashboard();
 if (page === 'posts') initPosts();
 if (page === 'settings') initSettings();

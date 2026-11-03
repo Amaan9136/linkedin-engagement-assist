@@ -6,7 +6,7 @@ import logging_setup
 from database import models
 from . import comment_service, engagement_service, health_service, ollama_service, post_collector, retry_service
 from .errors import ActionUncertain, AuthRequired, BrowserUnavailable, Deferred, LimitReached, PermanentError, ServiceUnavailable, TemporaryError
-from .linkedin_browser import FEED_URL, BrowserHost, LinkedInBrowser
+from .linkedin_browser import BrowserHost, LinkedInBrowser
 log = logging.getLogger('linkedin.worker')
 runtime = health_service.runtime
 class LeaseHeld(Exception):
@@ -39,8 +39,6 @@ class MonitoringWorker:
         self.restart_host = False
         self.ai_streak = 0
         self.ai_pause_until = 0.0
-        self.scroll_until = 0.0
-        self.scroll_fresh = False
         self.start_lock = threading.Lock()
     def start(self):
         with self.start_lock:
@@ -61,15 +59,6 @@ class MonitoringWorker:
             lane.retry_at = 0.0
     def poll_now(self):
         self.next_poll = 0.0
-    def toggle_autoscroll(self):
-        if time.time() < self.scroll_until:
-            self.scroll_until = 0.0
-            runtime.set(autoscroll_until=None)
-            return False
-        self.scroll_until = time.time() + 180
-        self.scroll_fresh = True
-        runtime.set(autoscroll_until=models.iso_in(180))
-        return True
     def _supervise(self):
         failures = 0
         while not self.stop_evt.is_set():
@@ -220,13 +209,7 @@ class MonitoringWorker:
             return False
     def _feed(self, lane, s):
         now = time.time()
-        scrolling = now < self.scroll_until
-        if self.scroll_until and not scrolling:
-            self.scroll_until = 0.0
-            runtime.set(autoscroll_until=None)
-        if scrolling and lane.ok:
-            self._safe(self._autoscroll, None, lane, s)
-        if not scrolling and s['monitoring_enabled'] and now >= self.next_poll:
+        if s['monitoring_enabled'] and now >= self.next_poll:
             if lane.ok and (not (s['poll_backlog_limit'] and models.ai_backlog() > s['poll_backlog_limit'])):
                 self.next_poll = now + s['poll_interval']
                 runtime.set(next_poll_at=models.iso_in(s['poll_interval']))
@@ -267,34 +250,6 @@ class MonitoringWorker:
             except Exception:
                 log.exception('Failed to store post %s', p.get('url'))
         return new
-    def _end_scroll(self, e):
-        self.scroll_until = 0.0
-        runtime.set(autoscroll_until=None)
-        log.warning('Auto scroll stopped: %s', e)
-    def _autoscroll(self, lane, s):
-        b = lane.browser
-        try:
-            page = b._get_page()
-            if self.scroll_fresh or not page.url.startswith(FEED_URL):
-                self.scroll_fresh = False
-                page = b.goto_feed()
-            posts = post_collector.to_posts(post_collector.read_items(page, b), s['lookback_days'])
-            b.scroll(page)
-        except AuthRequired as e:
-            runtime.set(auth_status='auth_required', auth_message=str(e))
-            self.next_auth_check = time.time() + 60
-            self._end_scroll(e)
-            return
-        except BrowserUnavailable as e:
-            lane.force = True
-            self._end_scroll(e)
-            return
-        except TemporaryError as e:
-            self._end_scroll(e)
-            return
-        new = self._store(posts, s)
-        if new:
-            log.info('Auto scroll: %d seen, %d new', len(posts), new)
     def _work(self, lane, s):
         kind = lane.name
         ai = kind == 'ai'
