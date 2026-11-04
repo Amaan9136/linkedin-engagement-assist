@@ -286,8 +286,8 @@ class MonitoringWorker:
             log.warning('Connection request failed: %s', e)
             return
         if found is None:
-            self.next_connect = time.time() + 600
-            log.warning('No Connect buttons found on My Network; trying again in 10 minutes')
+            self.next_connect = time.time() + 60
+            log.warning('No Connect buttons found on My Network; trying again in 1 minutes')
             return
         name, url = found
         models.add_connection(name, url)
