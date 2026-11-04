@@ -21,6 +21,8 @@ except ImportError:
 log = logging.getLogger('linkedin.browser')
 FEED_URL = 'https://www.linkedin.com/feed/'
 GROW_URL = 'https://www.linkedin.com/mynetwork/grow/'
+CONNECT_URLS = (GROW_URL, 'https://www.linkedin.com/mynetwork/', 'https://www.linkedin.com/search/results/people/?network=%5B%22S%22%5D&origin=FACETED_SEARCH&page={}')
+CONNECT_PREFIXES = ('https://www.linkedin.com/mynetwork/', 'https://www.linkedin.com/search/results/people/')
 LIMIT_MSG = 'Commenting terminated: LinkedIn daily comment limit reached. Resume it from the dashboard when the limit resets'
 AUTH_MARKERS = ('/login', '/checkpoint', '/authwall', '/uas/', '/signup')
 UNAVAILABLE_MARKERS = ('this post cannot be displayed', "this content isn't available", 'page not found')
@@ -32,10 +34,10 @@ SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
 SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
-SEL_CONNECT = "button[aria-label*='Invite'][aria-label*='connect' i]:not([data-skip]):visible, button:text-is('Connect'):not([data-skip]):visible"
+SEL_CONNECT = "button[aria-label*='Invite' i][aria-label*='connect' i]:not([data-skip]):visible, a[aria-label*='Invite' i][aria-label*='connect' i]:not([data-skip]):visible, button:text-is('Connect'):not([data-skip]):visible, a:text-is('Connect'):not([data-skip]):visible, [role='button']:text-is('Connect'):not([data-skip]):visible"
 CONNECT_LEFT_JS = "e => e.isConnected && (/^Invite .* connect/i.test(e.getAttribute('aria-label') || '') || (e.innerText || '').trim() === 'Connect')"
-CONNECT_URL_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return a.href; } return ''; }"
-CONNECT_NAME_JS = "e => { let n = e; for (let i = 0; i < 8 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return (a.innerText || '').trim().split('\\n')[0]; } return ''; }"
+CONNECT_URL_JS = "e => { let n = e; for (let i = 0; i < 12 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return a.href; } return ''; }"
+CONNECT_NAME_JS = "e => { let n = e; for (let i = 0; i < 12 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return (a.innerText || '').trim().split('\\n')[0]; } return ''; }"
 SEL_SEND_NOTE = "button[aria-label='Send without a note'], button:has-text('Send without a note')"
 SEL_COMMENTS = 'article.comments-comment-entity, .comments-comment-item, .comments-comment-meta__description'
 CLIP_JS = "(() => { const p = Clipboard.prototype, w = p.writeText; p.writeText = function (t) { window.__copied = t; return w.apply(this, arguments); }; document.addEventListener('copy', () => { const t = String(getSelection()); if (t) window.__copied = t; }, true); })()"
@@ -448,21 +450,39 @@ class LinkedInBrowser:
         if hit:
             page.keyboard.press('Escape')
             raise LimitReached(kind, msg)
+    @staticmethod
+    def _connect_btn(page):
+        for f in page.frames:
+            try:
+                b = f.locator(SEL_CONNECT).first
+                if b.count():
+                    return b
+            except (PWError, PWTimeout):
+                continue
+        return None
     def connect_next(self):
         page = self._get_page()
-        if not page.url.startswith(GROW_URL):
-            page = self.goto(GROW_URL)
-            try:
-                page.wait_for_selector(SEL_CONNECT, timeout=10000)
-            except PWTimeout:
-                pass
-        for _ in range(4):
-            btn = page.locator(SEL_CONNECT).first
-            if btn.count():
+        nxt = 0
+        for attempt in range(len(CONNECT_URLS) + 1):
+            if attempt or not page.url.startswith(CONNECT_PREFIXES):
+                page = self.goto(CONNECT_URLS[nxt % len(CONNECT_URLS)].format(random.randint(1, 5)))
+                nxt += 1
+                for _ in range(10):
+                    if self._connect_btn(page) is not None:
+                        break
+                    page.wait_for_timeout(1000)
+            page.bring_to_front()
+            page.mouse.move(640, 450)
+            for _ in range(4):
+                btn = self._connect_btn(page)
+                if btn is not None:
+                    break
+                page.mouse.wheel(0, random.randint(700, 1000))
+                page.wait_for_timeout(random.randint(1200, 1800))
+            if btn is not None:
                 break
-            page.mouse.wheel(0, random.randint(700, 1000))
-            page.wait_for_timeout(random.randint(1200, 1800))
         else:
+            self.snapshot(page, 'connect_debug.html', 'No Connect buttons found')
             return None
         name = 'someone'
         url = None
