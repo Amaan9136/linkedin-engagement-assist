@@ -59,6 +59,10 @@ def bulk():
     else:
         return fail('Unknown queue action')
     return ok(done=done, message=f'{done} of {len(ids)} job(s) updated')
+@bp.post('/api/connections/clear')
+@api
+def clear_connections():
+    return ok(message=f'Removed {models.clear_connections()} connection request log(s)')
 @bp.post('/api/queue/clear')
 @api
 def clear():

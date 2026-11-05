@@ -302,10 +302,14 @@ class LinkedInBrowser:
                 if not scope.locator(opener).count():
                     continue
                 try:
+                    scope.locator(opener).first.evaluate("e => e.scrollIntoView({block: 'center'})")
+                    page.wait_for_timeout(300)
                     scope.locator(opener).first.click(timeout=3000)
                     page.get_by_text(re.compile('copy link', re.I)).locator('visible=true').first.click(timeout=5000)
                     break
                 except PWTimeout:
+                    if not self._link_fail:
+                        self.snapshot(page, 'menu_debug.html', 'Copy link attempt failed via ' + opener)
                     page.keyboard.press('Escape')
             else:
                 raise PWTimeout('Copy link not found')
@@ -398,10 +402,11 @@ class LinkedInBrowser:
             if any((m in body for m in UNAVAILABLE_MARKERS)):
                 raise PermanentError('Post is no longer available') from e
             raise TemporaryError('Post content did not load (layout change or slow network)') from e
-        snip = _norm(post['body'] if post else '')[:40]
-        if len(snip) < 15:
+        body = _norm(post['body'] if post else '')
+        snips = [x for x in (body[:40], body[40:80], body[-40:]) if len(x) >= 15]
+        if not snips:
             raise PermanentError('Post has too little text to confirm it is the right post, so nothing was posted')
-        hit = page.locator(SEL_UPDATE).filter(has_text=snip)
+        hit = page.locator(SEL_UPDATE).filter(has_text=re.compile('|'.join(re.escape(x).replace('\\ ', '\\s+') for x in snips), re.I))
         try:
             hit.first.wait_for(timeout=8000)
         except PWTimeout:

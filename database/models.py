@@ -267,5 +267,7 @@ def run_jobs_now(ids):
     return db.execute(f"UPDATE jobs SET next_run_at=?, updated_at=? WHERE id IN ({','.join('?' * len(ids))}) AND status='queued'", (now, now, *ids)).rowcount
 def delete_jobs(ids):
     return db.execute(f"DELETE FROM jobs WHERE id IN ({','.join('?' * len(ids))}) AND status!='running'", ids).rowcount
+def clear_connections():
+    return db.execute('DELETE FROM connections').rowcount
 def clear_finished():
     return db.execute("DELETE FROM jobs WHERE status IN ('done','cancelled')").rowcount
