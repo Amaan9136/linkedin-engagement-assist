@@ -33,7 +33,7 @@ SEL_LIKE = ["button[aria-label^='Reaction button state']", 'button.react-button_
 SEL_COMMENT_OPEN = ['button.comment-button', "button[aria-label^='Comment']"]
 SEL_EDITOR = ["[data-testid*='text-editor'] [role='textbox'][contenteditable='true']", "div[role='textbox'][contenteditable='true'][aria-label*='comment' i]", '.comments-comment-box__form .ql-editor', '.comments-comment-box-comment__text-editor .ql-editor', "div.ql-editor[contenteditable='true']", "div[role='textbox'][contenteditable='true']"]
 SEL_SUBMIT = ["[componentkey*='commentButtonSection'] button", "button:not([aria-label]):text-is('Comment')", 'button.comments-comment-box__submit-button--cr', 'button.comments-comment-box__submit-button', "form.comments-comment-box__form button[type='submit']"]
-SEL_LINK_OPEN = "[aria-label='Send'], button[aria-label^='Open control menu for post by']"
+SEL_LINK_OPEN = "button[aria-label^='Open control menu for post by'], [aria-label='Send']"
 SEL_CONNECT = "button[aria-label*='Invite' i][aria-label*='connect' i]:not([data-skip]):visible, a[aria-label*='Invite' i][aria-label*='connect' i]:not([data-skip]):visible, button:text-is('Connect'):not([data-skip]):visible, a:text-is('Connect'):not([data-skip]):visible, [role='button']:text-is('Connect'):not([data-skip]):visible"
 CONNECT_LEFT_JS = "e => e.isConnected && (/^Invite .* connect/i.test(e.getAttribute('aria-label') || '') || (e.innerText || '').trim() === 'Connect')"
 CONNECT_URL_JS = "e => { let n = e; for (let i = 0; i < 12 && n; i++, n = n.parentElement) { const a = n.querySelector(\"a[href*='/in/']\"); if (a) return a.href; } return ''; }"
@@ -303,7 +303,7 @@ class LinkedInBrowser:
                     continue
                 try:
                     scope.locator(opener).first.click(timeout=3000)
-                    page.get_by_text(re.compile('copy link', re.I)).locator('visible=true').first.click(timeout=3000)
+                    page.get_by_text(re.compile('copy link', re.I)).locator('visible=true').first.click(timeout=5000)
                     break
                 except PWTimeout:
                     page.keyboard.press('Escape')
