@@ -502,6 +502,12 @@ function initQueue() {
     qstate.selected.clear();
     loadQueue(true);
   };
+  $('#c-clear').onclick = async () => {
+    if (!confirm('Delete all connection request logs?')) return;
+    await act(() => api('POST', '/api/connections/clear'));
+    qstate.cpage = 1;
+    loadQueue(true);
+  };
   $('#bulk-run').onclick = async () => {
     const action = $('#bulk-action').value;
     const ids = [...qstate.selected];
