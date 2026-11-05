@@ -98,7 +98,7 @@ async function refreshStatus() {
     if (page === 'dashboard') {
       document.querySelectorAll('[data-stat]').forEach(n => { n.textContent = d.stats[n.dataset.stat] ?? 0; });
       document.querySelectorAll('[data-limit]').forEach(n => { const l = d.config[n.dataset.limit]; n.textContent = l ? ' / ' + l : ' (no limit)'; });
-      [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit'], ['#m-connects', 'connects_24h', 'daily_connect_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
+      [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit'], ['#m-connects', 'connects_24h', 'daily_connect_limit'], ['#m-ai', 'ai_1h', 'ai_hourly_limit'], ['#m-queue', 'queued_jobs', 'max_queue'], ['#m-backlog', 'ai_backlog', 'poll_backlog_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
       const s = d.status;
       $('#st-monitor').textContent = nice(s.worker_alive ? s.monitor_state : 'stopped');
       $('#st-browser').textContent = nice(s.browser_status);

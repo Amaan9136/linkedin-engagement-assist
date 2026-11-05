@@ -24,13 +24,16 @@
 <button class="btn" id="btn-browser" title="Close and reopen the background browser. Use this if something seems stuck.">Restart browser</button>
 </div>
 </section>
-<h3 class="section-title">Daily safety limits</h3>
+<h3 class="section-title">Safety limits</h3>
 <section class="cards">
 <div class="card"><span class="label">Likes in the last 24 hours</span><span class="hint">Liking pauses at your daily limit to protect your account.</span><strong><span data-stat="likes_24h">0</span><small data-limit="daily_like_limit"></small></strong><div class="meter"><i id="m-likes"></i></div></div>
 <div class="card"><span class="label">Comments in the last 24 hours</span><span class="hint">Commenting pauses at your daily limit to protect your account.</span><strong><span data-stat="comments_24h">0</span><small data-limit="daily_comment_limit"></small></strong><div class="meter"><i id="m-comments"></i></div></div>
 <div class="card"><span class="label">Connections in the last 24 hours</span><span class="hint">Connecting pauses at your daily limit to protect your account.</span><strong><span data-stat="connects_24h">0</span><small data-limit="daily_connect_limit"></small></strong><div class="meter"><i id="m-connects"></i></div></div>
+<div class="card"><span class="label">AI drafts in the last hour</span><span class="hint">Drafting pauses at your hourly limit to protect your AI allowance.</span><strong><span data-stat="ai_1h">0</span><small data-limit="ai_hourly_limit"></small></strong><div class="meter"><i id="m-ai"></i></div></div>
+<div class="card"><span class="label">Queue space used</span><span class="hint">No new jobs are added once the queue is full.</span><strong><span data-stat="queued_jobs">0</span><small data-limit="max_queue"></small></strong><div class="meter"><i id="m-queue"></i></div></div>
+<div class="card"><span class="label">Drafts waiting in the queue</span><span class="hint">Feed checking waits when too many drafts are still waiting.</span><strong><span data-stat="ai_backlog">0</span><small data-limit="poll_backlog_limit"></small></strong><div class="meter"><i id="m-backlog"></i></div></div>
 </section>
-<p class="hint">You can change these limits on the <a href="/settings">Settings</a> page under Daily limits and pacing.</p>
+<p class="hint">You can change these limits on the <a href="/settings">Settings</a> page under AI drafts, Daily limits and pacing, and Queue and retries.</p>
 <h3 class="section-title">Your posts</h3>
 <section class="cards">
 <div class="card"><span class="label">Posts found</span><span class="hint">All posts collected from your feed.</span><strong data-stat="posts_total">0</strong></div>
