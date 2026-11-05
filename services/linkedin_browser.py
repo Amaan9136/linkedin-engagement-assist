@@ -500,11 +500,13 @@ class LinkedInBrowser:
             page.wait_for_timeout(random.randint(200, 500))
             el.click()
             page.wait_for_timeout(900)
+            self._guard_limit(page, 'weekly limit for connection invitations|reached the weekly limit', 'connect_weekly', 'Connections stopped for 24 hours: LinkedIn weekly invitation limit reached. They resume automatically after 24 hours')
             self._guard_limit(page, 'invitation limit', 'connect', 'Connections terminated: LinkedIn invitation limit reached. Resume them from the dashboard later')
             send = page.locator(SEL_SEND_NOTE).first
             if send.count():
                 send.click()
                 page.wait_for_timeout(700)
+            self._guard_limit(page, 'weekly limit for connection invitations|reached the weekly limit', 'connect_weekly', 'Connections stopped for 24 hours: LinkedIn weekly invitation limit reached. They resume automatically after 24 hours')
             if el.evaluate(CONNECT_LEFT_JS):
                 el.evaluate("e => e.setAttribute('data-skip', '1')")
                 page.keyboard.press('Escape')

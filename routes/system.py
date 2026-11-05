@@ -17,10 +17,28 @@ def feature(name, state):
         return fail('Unknown control', 404)
     models.set_settings({name + '_enabled': state == 'resume'})
     if state == 'resume':
+        if name == 'connect':
+            models.set_meta('connect_blocked_until', '')
+            current_app.extensions['worker'].next_connect = 0.0
         current_app.extensions['worker'].start()
         if name == 'monitoring':
             current_app.extensions['worker'].poll_now()
     return ok(message=label + (' resumed' if state == 'resume' else ' paused. Queued work is kept.'))
+@bp.post('/api/connect/retry')
+@api
+def retry_connect():
+    models.set_settings({'connect_enabled': True})
+    models.set_meta('connect_blocked_until', '')
+    current_app.extensions['worker'].next_connect = 0.0
+    return ok(message='Retrying connection requests now')
+@bp.post('/api/comment/retry')
+@api
+def retry_comment():
+    models.set_settings({'comment_enabled': True})
+    models.set_meta('comment_block_reason', '')
+    models.run_jobs_now(models.job_ids('active', 'comment'))
+    current_app.extensions['worker'].start()
+    return ok(message='Retrying comments now')
 @bp.post('/api/browser/restart')
 @api
 def restart_browser():

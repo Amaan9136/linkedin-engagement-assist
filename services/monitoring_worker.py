@@ -270,7 +270,10 @@ class MonitoringWorker:
         try:
             found = lane.browser.connect_next()
         except LimitReached as e:
-            models.set_settings({'connect_enabled': False})
+            models.set_meta('connect_blocked_until', models.iso_in(86400))
+            models.set_meta('connect_block_reason', str(e))
+            if e.kind != 'connect_weekly':
+                models.set_settings({'connect_enabled': False})
             log.warning('%s', e)
             return
         except AuthRequired as e:
@@ -330,6 +333,7 @@ class MonitoringWorker:
             retry_service.defer(job, pause, str(e), True)
         except LimitReached as e:
             models.set_settings({e.kind + '_enabled': False})
+            models.set_meta(e.kind + '_block_reason', str(e))
             log.warning('%s', e, extra={'post_id': job['post_id']})
             retry_service.defer(job, 3600, str(e), True)
         except TemporaryError as e:

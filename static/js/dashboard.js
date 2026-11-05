@@ -93,12 +93,16 @@ async function refreshStatus() {
     const pill = $('#health-pill');
     pill.textContent = text;
     pill.className = 'pill pill-' + cls;
-    syncSwitches(d.config);
+    syncSwitches(d.config, d.stats);
     try { sessionStorage.setItem('pill', JSON.stringify([text, cls])); } catch (e) {}
     if (page === 'dashboard') {
       document.querySelectorAll('[data-stat]').forEach(n => { n.textContent = d.stats[n.dataset.stat] ?? 0; });
       document.querySelectorAll('[data-limit]').forEach(n => { const l = d.config[n.dataset.limit]; n.textContent = l ? ' / ' + l : ' (no limit)'; });
       [['#m-likes', 'likes_24h', 'daily_like_limit'], ['#m-comments', 'comments_24h', 'daily_comment_limit'], ['#m-connects', 'connects_24h', 'daily_connect_limit'], ['#m-ai', 'ai_1h', 'ai_hourly_limit'], ['#m-queue', 'queued_jobs', 'max_queue'], ['#m-backlog', 'ai_backlog', 'poll_backlog_limit']].forEach(([sel, used, lim]) => { const pct = d.config[lim] ? Math.min(100, d.stats[used] / d.config[lim] * 100) : 0; $(sel).style.width = pct + '%'; $(sel).className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : ''; });
+      $('#m-connects-note').textContent = d.stats.connect_block_reason ? d.stats.connect_block_reason + ' · Next attempt after ' + fmt(d.stats.connect_blocked_until) : 'Connecting pauses at your daily limit to protect your account.';
+      $('#m-comments-note').textContent = d.stats.comment_block_reason || 'Commenting pauses at your daily limit to protect your account.';
+      $('#btn-comment-retry').hidden = !d.stats.comment_block_reason;
+      $('#btn-connect-retry').hidden = !d.stats.connect_block_reason;
       const s = d.status;
       $('#st-monitor').textContent = nice(s.worker_alive ? s.monitor_state : 'stopped');
       $('#st-browser').textContent = nice(s.browser_status);
@@ -127,9 +131,10 @@ async function refreshStatus() {
     pill.className = 'pill pill-bad';
   }
 }
-function syncSwitches(c) {
+function syncSwitches(c, s) {
   document.querySelectorAll('.sw[data-sw]').forEach(b => {
     const on = !!c[b.dataset.sw + '_enabled'];
+    b.disabled = !!s[b.dataset.sw + '_block_reason'];
     b.classList.toggle('on', on);
     b.classList.toggle('off', !on);
     b.querySelector('.sw-state').textContent = on ? 'On' : 'Paused';
@@ -156,6 +161,8 @@ function hint(sel, out) {
   sync();
 }
 function initDashboard() {
+  $('#btn-comment-retry').onclick = async () => { if (await act(() => api('POST', '/api/comment/retry'))) refreshStatus(); };
+  $('#btn-connect-retry').onclick = async () => { if (await act(() => api('POST', '/api/connect/retry'))) refreshStatus(); };
   $('#btn-browser').onclick = () => {
     if (confirm('Restart the browser now?')) act(() => api('POST', '/api/browser/restart'));
   };

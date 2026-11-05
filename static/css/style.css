@@ -107,6 +107,7 @@ table.logs td.msg{word-break:break-word;min-width:240px}
 .sw.on::before{background:var(--ok)}
 .sw.off{background:#f3e3b9;border-color:#d9bf7c;color:var(--warn)}
 .sw.off::before{background:#c98a10}
+.sw:disabled{cursor:not-allowed;opacity:.55}
 @media(max-width:600px){
 .switches .sw{flex:1 1 calc(50% - 8px);justify-content:center}
 .post{grid-template-columns:1fr}

@@ -121,7 +121,7 @@ def post_ids(flt='all', q=''):
 def stats():
     def n(sql):
         return db.query_one(sql)[0]
-    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'posts_24h': db.query_one('SELECT COUNT(*) FROM posts WHERE discovered_at>=?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT),))[0], 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')"), 'likes_24h': daily_used('like'), 'comments_24h': daily_used('comment'), 'connects_24h': connect_used(), 'ai_1h': db.query_one("SELECT COUNT(*) FROM actions WHERE kind='ai' AND status='done' AND created_at>?", (iso_in(-3600),))[0], 'ai_backlog': ai_backlog()}
+    return {'posts_total': n('SELECT COUNT(*) FROM posts'), 'posts_24h': db.query_one('SELECT COUNT(*) FROM posts WHERE discovered_at>=?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT),))[0], 'pending_ai': n("SELECT COUNT(*) FROM posts WHERE skipped=0 AND ai_status IN ('pending','generating')"), 'drafts': n("SELECT COUNT(*) FROM posts WHERE comment_status IN ('draft','approved')"), 'comments_published': n("SELECT COUNT(*) FROM posts WHERE comment_status='published'"), 'liked': n("SELECT COUNT(*) FROM posts WHERE like_status='liked'"), 'skipped': n('SELECT COUNT(*) FROM posts WHERE skipped=1'), 'failed_or_retrying': n("SELECT COUNT(*) FROM jobs WHERE status='failed' OR (status='queued' AND attempts>0)"), 'verification_required': n("SELECT COUNT(*) FROM posts WHERE comment_status='verification_required' OR like_status='verification_required'"), 'queued_jobs': n("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')"), 'likes_24h': daily_used('like'), 'comments_24h': daily_used('comment'), 'comment_block_reason': '' if all_settings()['comment_enabled'] else get_meta('comment_block_reason', ''), 'connects_24h': connect_used(), 'connect_block_reason': get_meta('connect_block_reason', '') if connect_block_left() else '', 'connect_blocked_until': get_meta('connect_blocked_until') if connect_block_left() else None, 'ai_1h': db.query_one("SELECT COUNT(*) FROM actions WHERE kind='ai' AND status='done' AND created_at>?", (iso_in(-3600),))[0], 'ai_backlog': ai_backlog()}
 def daily_used(kind):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT)
     return db.query_one("SELECT COUNT(*) FROM actions WHERE kind=? AND status='success' AND COALESCE(detail,'')!='already liked' AND created_at>=?", (kind, cutoff))[0]
@@ -135,7 +135,12 @@ def daily_wait(kind, limit):
     return max(1, math.ceil((parse_iso(rows[-1]['created_at']) + timedelta(hours=24) - parse_iso(now_iso())).total_seconds()))
 def connect_used():
     return db.query_one('SELECT COUNT(*) FROM connections WHERE created_at>=?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT),))[0]
+def connect_block_left():
+    until = get_meta('connect_blocked_until', '')
+    return max(1, math.ceil((parse_iso(until) - parse_iso(now_iso())).total_seconds())) if until > now_iso() else 0
 def connect_wait(limit):
+    if connect_block_left():
+        return connect_block_left()
     if limit <= 0:
         return 0
     rows = db.query('SELECT created_at FROM connections WHERE created_at>=? ORDER BY id DESC LIMIT ?', ((datetime.now(timezone.utc) - timedelta(hours=24)).strftime(FMT), limit))
