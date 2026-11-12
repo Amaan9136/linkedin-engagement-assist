@@ -81,6 +81,7 @@ Start Ollama and make the model available:
 ollama signin
 ollama pull gpt-oss:20b-cloud
 ```
+To use Ollama cloud keys, set `OLLAMA_API_KEY_1`, `OLLAMA_API_KEY_2` and so on in `.env` and point `ollama_endpoint` to `https://ollama.com/api/generate`. If a key fails the next one is tried. Add `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2` and so on to fall back to Gemini when every Ollama attempt fails.
 
 ### Use your own Chromium (`CHROMIUM_EXECUTABLE`)
 This is optional. Leave `CHROMIUM_EXECUTABLE` empty to use the Chromium installed by `playwright install chromium`. Set it only when you want to use a browser that is already installed, which is required on Termux and some ARM devices.
@@ -189,7 +190,7 @@ Stop the app before restoring. The current database is saved to `backups/` befor
 | Posts found but no text | LinkedIn changed its page structure: update the selectors at the top of `services/linkedin_browser.py` and the script in `services/post_collector.py` |
 | "Another process holds the lease" | Another instance is running; stop it or wait about 90 seconds after a crash |
 
-Logs are in `logs/app.log` (rotating) and on the Logs page. Secrets are redacted. Use **Clear logs** on the Logs page to delete the entries and empty the log files.
+Logs are on the Logs page. Secrets are redacted. Use **Clear logs** on the Logs page to delete the entries.
 
 ## Project structure
 ```

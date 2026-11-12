@@ -3,16 +3,30 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 import requests
-from .errors import PermanentError, ServiceUnavailable, TemporaryError
+from config import api_keys
+from . import gemini_service
+from .errors import AppError, PermanentError, ServiceUnavailable, TemporaryError
 log = logging.getLogger('linkedin.ollama')
 _usage = {'t': 0.0, 'v': None}
 def _base(endpoint):
     p = urlsplit(endpoint)
     return f'{p.scheme}://{p.netloc}'
 def generate(prompt, system, s):
+    err = None
+    ks = api_keys('OLLAMA_API_KEY') or [None]
+    for i, key in enumerate(ks, 1):
+        try:
+            return _generate(prompt, system, s, key)
+        except AppError as e:
+            err = e
+            log.warning('Ollama key %d/%d failed: %s', i, len(ks), e)
+    if not gemini_service.keys():
+        raise err
+    return gemini_service.generate(prompt, system, s)
+def _generate(prompt, system, s, key):
     payload = {'model': s['ai_model'], 'prompt': prompt, 'system': system, 'stream': False, 'options': {'temperature': 0.7, 'num_predict': 1024}}
     try:
-        r = requests.post(s['ollama_endpoint'], json=payload, timeout=(5, s['ai_timeout']))
+        r = requests.post(s['ollama_endpoint'], json=payload, headers={'Authorization': f'Bearer {key}'} if key else None, timeout=(5, s['ai_timeout']))
     except requests.ConnectionError as e:
         raise ServiceUnavailable(f"Ollama is not reachable at {s['ollama_endpoint']}. Start it with 'ollama serve'.") from e
     except requests.Timeout as e:

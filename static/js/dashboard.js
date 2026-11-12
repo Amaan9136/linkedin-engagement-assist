@@ -336,7 +336,7 @@ function field(key, spec, value) {
   }
   return h('div', {class: 'field', 'data-key': key}, h('label', {for: id}, spec.label), h('span', {class: 'hint'}, spec.help), input, h('span', {class: 'error'}));
 }
-const GROUPS = [['Feed checking', 'How the assistant looks for new posts.', ['monitoring_enabled', 'poll_interval', 'lookback_days', 'poll_backlog_limit']], ['AI drafts', 'Which AI writes your comment drafts and how it behaves.', ['ai_model', 'ollama_endpoint', 'ai_timeout', 'auto_ai', 'ai_gap', 'ai_hourly_limit', 'comment_style', 'max_comment_length', 'comment_max_age_hours']], ['Publishing', 'What happens automatically and what waits for you.', ['publishing_mode', 'like_enabled', 'comment_enabled', 'connect_enabled', 'auto_like', 'auto_comment', 'like_max_age_hours']], ['Daily limits and pacing', 'Keeps your activity natural and your LinkedIn account safe.', ['daily_like_limit', 'daily_comment_limit', 'daily_connect_limit', 'like_gap', 'comment_cooldown', 'connect_gap', 'post_retry_cooldown']], ['Queue and retries', 'How jobs are processed and tried again when something goes wrong.', ['batch_size', 'max_queue', 'max_retries', 'backoff_base', 'backoff_max']], ['Display and logs', 'How times are shown and how much detail is logged.', ['log_level', 'timezone']]];
+const GROUPS = [['Feed checking', 'How the assistant looks for new posts.', ['monitoring_enabled', 'poll_interval', 'lookback_days', 'poll_backlog_limit']], ['AI drafts', 'Which AI writes your comment drafts and how it behaves.', ['ai_model', 'gemini_model', 'ollama_endpoint', 'ai_timeout', 'auto_ai', 'ai_gap', 'ai_hourly_limit', 'comment_style', 'max_comment_length', 'comment_max_age_hours']], ['Publishing', 'What happens automatically and what waits for you.', ['publishing_mode', 'like_enabled', 'comment_enabled', 'connect_enabled', 'auto_like', 'auto_comment', 'like_max_age_hours']], ['Daily limits and pacing', 'Keeps your activity natural and your LinkedIn account safe.', ['daily_like_limit', 'daily_comment_limit', 'daily_connect_limit', 'like_gap', 'comment_cooldown', 'connect_gap', 'post_retry_cooldown']], ['Queue and retries', 'How jobs are processed and tried again when something goes wrong.', ['batch_size', 'max_queue', 'max_retries', 'backoff_base', 'backoff_max']], ['Display and logs', 'How times are shown and how much detail is logged.', ['log_level', 'timezone']]];
 async function initSettings() {
   const form = $('#settings-form');
   let specs;
@@ -391,7 +391,7 @@ function initLogs() {
   hint($('#log-level'), $('#log-hint'));
   $('#log-refresh').onclick = loadLogs;
   $('#log-clear').onclick = async () => {
-    if (!confirm('Delete all log entries and empty the log file?')) return;
+    if (!confirm('Delete all log entries?')) return;
     await act(() => api('POST', '/api/logs/clear'));
     loadLogs();
   };

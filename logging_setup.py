@@ -1,5 +1,4 @@
 import logging
-import logging.handlers
 class SecretFilter(logging.Filter):
     def __init__(self, secrets):
         super().__init__()
@@ -29,13 +28,11 @@ def setup_logging(cfg, level='INFO'):
     root = logging.getLogger()
     root.handlers.clear()
     flt = SecretFilter([cfg.admin_password, cfg.secret_key])
-    fh = logging.handlers.RotatingFileHandler(cfg.log_dir / 'app.log', maxBytes=2000000, backupCount=5, encoding='utf-8')
-    fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s'))
     sh = logging.StreamHandler()
     sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s'))
     dh = DBHandler()
     dh.setLevel(logging.INFO)
-    for h in (fh, sh, dh):
+    for h in (sh, dh):
         h.addFilter(flt)
         root.addHandler(h)
     set_level(level)
